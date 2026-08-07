@@ -1,0 +1,49 @@
+name: manhwa_toon
+description: "A premium native Flutter manga reader powered by ManhwaToon."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.8.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # State management
+  flutter_riverpod: ^2.6.1
+
+  # Networking & parsing
+  dio: ^5.7.0
+  html: ^0.15.5
+
+  # Local database
+  drift: ^2.24.0
+  drift_flutter: ^0.2.4
+  sqlite3_flutter_libs: ^0.5.30
+
+  # Storage & paths
+  path_provider: ^2.1.5
+  path: ^1.9.0
+  shared_preferences: ^2.3.4
+
+  # Images
+  cached_network_image: ^3.4.1
+
+  # Utilities
+  intl: ^0.19.0
+  timeago: ^3.7.0
+  url_launcher: 6.3.0
+  wakelock_plus: ^1.2.10
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  drift_dev: ^2.24.0
+  build_runner: ^2.4.13
+
+flutter:
+  uses-material-design: true
