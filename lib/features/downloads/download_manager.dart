@@ -6,25 +6,26 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/database/app_repository.dart';
-import '../../core/network/site_api.dart';
 import '../../core/providers/app_providers.dart';
+import '../../core/sources/manga_source.dart';
+import '../../core/sources/source_registry.dart';
 import '../../models/chapter.dart';
 import '../../models/manga.dart';
 
 /// Owns the offline download queue.
 ///
 /// Each queued chapter is fetched (page list + images) in the background and
-/// written to `{documents}/downloads/{mangaSlug}/{chapterSlug}/page-N.jpg`.
+/// written to `{documents}/downloads/{sourceId}/{mangaSlug}/{chapterSlug}/page-N.jpg`.
 /// Progress is persisted through [AppRepository] so it survives restarts.
 class DownloadManager {
   DownloadManager({
     required AppRepository repository,
-    required SiteApi api,
+    required MangaSource Function(String url) resolveSource,
   })  : _repository = repository,
-        _api = api;
+        _resolveSource = resolveSource;
 
   final AppRepository _repository;
-  final SiteApi _api;
+  final MangaSource Function(String url) _resolveSource;
 
   /// Chapter URLs that are currently being processed (prevents duplicates).
   final Set<String> _active = {};
@@ -47,7 +48,13 @@ class DownloadManager {
 
   Future<String> _dirFor({required Manga manga, required Chapter chapter}) async {
     final root = await _downloadRoot();
-    return p.join(root.path, _slugFromUrl(manga.url), _slugFromUrl(chapter.url));
+    final sourceId = _resolveSource(chapter.url).id;
+    return p.join(
+      root.path,
+      sourceId,
+      _slugFromUrl(manga.url),
+      _slugFromUrl(chapter.url),
+    );
   }
 
   /// Queues a chapter for background download.
@@ -78,11 +85,12 @@ class DownloadManager {
   Future<void> _process(String chapterUrl) async {
     if (!_active.add(chapterUrl)) return;
     try {
+      final source = _resolveSource(chapterUrl);
       final task = await _repository.getDownloadTask(chapterUrl);
       if (task == null) return;
       await _repository.updateDownloadState(chapterUrl, state: 'downloading');
 
-      final pages = await _api.fetchReadingPages(chapterUrl);
+      final pages = await source.fetchReadingPages(chapterUrl);
       if (pages.isEmpty) {
         await _repository.updateDownloadState(
           chapterUrl,
@@ -107,7 +115,7 @@ class DownloadManager {
         if (await file.exists()) {
           bytes += await file.length();
         } else {
-          final response = await _api.downloadImageBytes(page.imageUrl);
+          final response = await source.downloadImageBytes(page.imageUrl);
           final data = response.data;
           if (data == null || data.isEmpty) {
             throw StateError('Empty image data for ${page.imageUrl}');
@@ -193,6 +201,6 @@ class DownloadManager {
 final downloadManagerProvider = Provider<DownloadManager>((ref) {
   return DownloadManager(
     repository: ref.watch(repositoryProvider),
-    api: ref.watch(siteApiProvider),
+    resolveSource: sourceForUrl,
   );
 });

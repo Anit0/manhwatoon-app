@@ -55,7 +55,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       chapterTitle: widget.chapterTitle,
       initialMode: mode,
       repository: ref.read(repositoryProvider),
-      api: ref.read(siteApiProvider),
+      api: ref.read(sourceForUrlProvider(widget.chapterUrl)),
       downloads: ref.read(downloadManagerProvider),
     )
       ..brightness = ref.read(settingsProvider).readerBrightness

@@ -92,6 +92,20 @@ void main() {
     expect(genres.map((g) => g.name), contains('Action'));
   });
 
+  test('parses genre links with custom genre path (mangayy style)', () {
+    const html = '''
+    <a href="https://mangayy.org/manga-genre/action/">Action</a>
+    <a href="https://mangayy.org/manga-genre/comedy/">Comedy</a>
+    <a href="https://mangayy.org/manga-genre/romance/">Romance</a>
+    <a href="https://mangayy.org/other/thing/">Ignored</a>
+    ''';
+    final genres =
+        MadaraParser.parseGenres(html, genrePath: '/manga-genre/');
+    expect(genres.length, 3);
+    expect(genres.map((g) => g.name), containsAll(['Action', 'Comedy']));
+    expect(genres.map((g) => g.slug), contains('romance'));
+  });
+
   test('parses relative time', () {
     final dt = MadaraParser.parseRelativeTime('2 days ago');
     expect(dt, isNotNull);

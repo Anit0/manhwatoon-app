@@ -42,7 +42,7 @@ class HomeDataNotifier extends AsyncNotifier<HomeData> {
   }
 
   Future<HomeData> _fetch() async {
-    final api = ref.read(siteApiProvider);
+    final api = ref.read(activeSourceProvider);
     final hideAdult = ref.read(settingsProvider).hideAdult;
 
     Future<List<Manga>> guarded(Future<List<Manga>> f) async {

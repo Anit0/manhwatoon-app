@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/providers/app_providers.dart';
 import '../../core/providers/settings_provider.dart';
+import '../../core/sources/source_registry.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/reader_models.dart';
 import '../downloads/download_manager.dart';
@@ -22,6 +23,25 @@ class SettingsScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          _Header('Content source'),
+          ...availableSources.map((source) {
+            final selected = ref.watch(activeSourceIdProvider) == source.id;
+            return RadioListTile<String>(
+              value: source.id,
+              groupValue: ref.watch(activeSourceIdProvider),
+              onChanged: (v) {
+                if (v != null) {
+                  ref.read(activeSourceIdProvider.notifier).select(v);
+                }
+              },
+              title: Text(source.name),
+              subtitle: Text(source.baseUrl),
+              secondary: Icon(
+                selected ? Icons.menu_book_rounded : Icons.public_rounded,
+              ),
+            );
+          }),
+          const Divider(height: 24),
           _Header('Appearance'),
           ListTile(
             leading: const Icon(Icons.palette_rounded),

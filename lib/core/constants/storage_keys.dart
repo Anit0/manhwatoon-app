@@ -31,4 +31,5 @@ class StorageKeys {
   static const String streakReminderEnabled = 'streak_reminder_enabled';
   static const String cacheMaxBytes = 'cache_max_bytes';
   static const String recentSearchCount = 'recent_search_count';
+  static const String activeSourceId = 'active_source_id';
 }

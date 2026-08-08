@@ -262,14 +262,23 @@ class MadaraParser {
   }
 
   /// Extracts genre links (slug, name) from a page containing genre menus.
-  static List<Genre> parseGenres(String html) {
+  ///
+  /// [genrePath] is the site-specific path prefix (e.g. `/manhwa-genre/` or
+  /// `/manga-genre/`) used to detect genre links and extract slugs.
+  static List<Genre> parseGenres(
+    String html, {
+    String genrePath = '/manhwa-genre/',
+  }) {
     final doc = html_parser.parse(html);
     final result = <Genre>[];
     final seen = <String>{};
-    for (final a in doc.querySelectorAll('a[href*="/manhwa-genre/"]')) {
+    for (final a in doc.querySelectorAll('a[href*="$genrePath"]')) {
       final href = a.attributes['href'] ?? '';
       final name = _cleanText(a.text) ?? '';
-      final match = RegExp(r'/manhwa-genre/([^/]+)/').firstMatch(href);
+      final pattern = RegExp(
+        RegExp.escape(genrePath) + r'([^/]+)/',
+      );
+      final match = pattern.firstMatch(href);
       final slug = match?.group(1);
       if (name.isEmpty || slug == null || seen.contains(slug)) continue;
       seen.add(slug);

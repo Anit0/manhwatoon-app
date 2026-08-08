@@ -73,7 +73,7 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
       _loading = true;
     });
     try {
-      final api = ref.read(siteApiProvider);
+      final api = ref.read(activeSourceProvider);
       final nextPage = _page + 1;
       final results = await api.fetchArchive(
         _sort,
@@ -269,7 +269,7 @@ class _GenrePickerSheetState extends ConsumerState<_GenrePickerSheet> {
   @override
   void initState() {
     super.initState();
-    _genresFuture = ref.read(siteApiProvider).fetchGenres();
+    _genresFuture = ref.read(activeSourceProvider).fetchGenres();
   }
 
   @override

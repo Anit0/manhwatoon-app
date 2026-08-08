@@ -39,7 +39,7 @@ class _MangaDetailScreenState extends ConsumerState<MangaDetailScreen> {
   }
 
   Future<dynamic> _loadDetail() async {
-    final api = ref.read(siteApiProvider);
+    final api = ref.read(sourceForUrlProvider(widget.manga.url));
     final result = await api.fetchMangaDetail(widget.manga.url);
     if (mounted) {
       setState(() {
@@ -149,6 +149,7 @@ class _MangaDetailScreenState extends ConsumerState<MangaDetailScreen> {
                   if (manga.coverUrl != null)
                     Image.network(
                       manga.coverUrl!,
+                      headers: mangaCoverHeaders(manga.coverUrl!),
                       fit: BoxFit.cover,
                       errorBuilder: (_, __, ___) => Container(
                         color: theme.colorScheme.surfaceContainerHigh,

@@ -31,7 +31,7 @@ class DiscoverDataNotifier extends AsyncNotifier<DiscoverData> {
   Future<DiscoverData> build() => _fetch();
 
   Future<DiscoverData> _fetch() async {
-    final api = ref.read(siteApiProvider);
+    final api = ref.read(activeSourceProvider);
     final hideAdult = ref.read(settingsProvider).hideAdult;
 
     Future<List<Manga>> guarded(Future<List<Manga>> f) async {
@@ -76,7 +76,7 @@ class DiscoverDataNotifier extends AsyncNotifier<DiscoverData> {
   Future<void> rerollRandom() async {
     final current = state.valueOrNull;
     if (current == null) return;
-    final api = ref.read(siteApiProvider);
+    final api = ref.read(activeSourceProvider);
     final list = await api.fetchArchive(SortOrder.trending, page: 1);
     if (list.isEmpty) return;
     final random = Random();

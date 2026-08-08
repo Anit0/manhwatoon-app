@@ -2,6 +2,15 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/manga.dart';
+import '../sources/source_registry.dart';
+
+/// HTTP headers needed to fetch images owned by a source.
+///
+/// Some Madara deployments (e.g. MangaYY) serve covers from their own domain
+/// and return 403 unless a `Referer` header for that domain is sent.
+Map<String, String> mangaCoverHeaders(String url) {
+  return {'referer': '${sourceForUrl(url).baseUrl}/'};
+}
 
 /// Renders a manga cover with skeleton shimmer and graceful error fallback.
 class MangaCoverImage extends StatelessWidget {
@@ -31,6 +40,7 @@ class MangaCoverImage extends StatelessWidget {
         ? placeholder
         : CachedNetworkImage(
             imageUrl: url,
+            httpHeaders: mangaCoverHeaders(url),
             fit: fit,
             width: width,
             height: height,

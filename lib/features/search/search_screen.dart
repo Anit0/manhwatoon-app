@@ -65,7 +65,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       return;
     }
     _debounce = Timer(const Duration(milliseconds: 250), () async {
-      final api = ref.read(siteApiProvider);
+      final api = ref.read(activeSourceProvider);
       final suggestions = await api.searchSuggestions(_query);
       if (!mounted) return;
       setState(() => _suggestions = suggestions);
@@ -100,7 +100,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       _loadingResults = true;
     });
     try {
-      final api = ref.read(siteApiProvider);
+      final api = ref.read(activeSourceProvider);
       final page = reset ? 1 : _page + 1;
       final results = await api.search(
         term,

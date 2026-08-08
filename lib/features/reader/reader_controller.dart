@@ -6,7 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 
 import '../../core/database/app_repository.dart';
-import '../../core/network/site_api.dart';
+import '../../core/sources/manga_source.dart';
 import '../../models/chapter.dart';
 import '../../models/manga.dart';
 import '../../models/reader_models.dart';
@@ -41,7 +41,7 @@ class ReaderController extends ChangeNotifier {
     required this.chapterTitle,
     required ReaderMode initialMode,
     required AppRepository repository,
-    required SiteApi api,
+    required MangaSource api,
     required DownloadManager downloads,
   })  : _mode = initialMode,
         _repository = repository,
@@ -55,7 +55,7 @@ class ReaderController extends ChangeNotifier {
   final String chapterUrl;
   final String chapterTitle;
   final AppRepository _repository;
-  final SiteApi _api;
+  final MangaSource _api;
   final DownloadManager _downloads;
 
   ReaderMode _mode;
