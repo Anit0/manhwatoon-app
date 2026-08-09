@@ -118,6 +118,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     onSeeAll: () => _openBrowse(context, SortOrder.latest),
                   ));
                 }
+                if (children.isEmpty) {
+                  return SliverFillRemaining(
+                    child: EmptyState(
+                      icon: Icons.cloud_off_rounded,
+                      title: 'Could not load home',
+                      message: 'Check your connection and try again.',
+                      actionLabel: 'Retry',
+                      onAction: _refresh,
+                    ),
+                  );
+                }
                 return SliverPadding(
                   padding: const EdgeInsets.only(bottom: 32),
                   sliver: SliverList.list(children: children),

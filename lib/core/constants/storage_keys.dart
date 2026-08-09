@@ -32,4 +32,8 @@ class StorageKeys {
   static const String cacheMaxBytes = 'cache_max_bytes';
   static const String recentSearchCount = 'recent_search_count';
   static const String activeSourceId = 'active_source_id';
+
+  /// Per-manga key remembering the last "seen" latest chapter URL, used by the
+  /// new-chapter update detection. Value: latest chapter URL.
+  static String ackLatestChapter(String mangaUrl) => 'ack_latest_chapter_$mangaUrl';
 }

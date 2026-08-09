@@ -24,6 +24,15 @@ class DiscoverData {
   final List<Manga> recentlyUpdated;
   final List<Manga> hiddenGems;
   final Manga? randomPick;
+
+  bool get isEmpty =>
+      trending.isEmpty &&
+      popular.isEmpty &&
+      highestRated.isEmpty &&
+      newReleases.isEmpty &&
+      recentlyUpdated.isEmpty &&
+      hiddenGems.isEmpty &&
+      randomPick == null;
 }
 
 class DiscoverDataNotifier extends AsyncNotifier<DiscoverData> {
@@ -36,7 +45,7 @@ class DiscoverDataNotifier extends AsyncNotifier<DiscoverData> {
 
     Future<List<Manga>> guarded(Future<List<Manga>> f) async {
       try {
-        final list = await f;
+        final list = await f.timeout(const Duration(seconds: 12));
         if (hideAdult) return list.where((m) => !m.isAdult).toList();
         return list;
       } catch (_) {
@@ -51,7 +60,10 @@ class DiscoverDataNotifier extends AsyncNotifier<DiscoverData> {
       guarded(api.fetchArchive(SortOrder.newManga, page: 1)),
       guarded(api.fetchArchive(SortOrder.latest, page: 1)),
       guarded(api.fetchArchive(SortOrder.rating, page: 3)),
-    ]);
+    ]).timeout(const Duration(seconds: 30));
+    if (results.length < 6) {
+      return const DiscoverData();
+    }
 
     final pool = [...results[0], ...results[2], ...results[3], ...results[4]];
     final random = Random();

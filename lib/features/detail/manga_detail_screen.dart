@@ -5,12 +5,14 @@ import 'package:timeago/timeago.dart' as timeago;
 import '../../core/database/app_database.dart';
 import '../../core/providers/app_providers.dart';
 import '../../core/router/app_routes.dart';
+import '../../core/sources/source_registry.dart';
 import '../../core/widgets/loaders.dart';
 import '../../core/widgets/manga_cover_image.dart';
 import '../../models/chapter.dart';
 import '../../models/manga.dart';
 import '../downloads/download_manager.dart';
 import '../library/collections_screen.dart';
+import '../library/library_updates_provider.dart';
 
 class MangaDetailScreen extends ConsumerStatefulWidget {
   const MangaDetailScreen({
@@ -46,6 +48,13 @@ class _MangaDetailScreenState extends ConsumerState<MangaDetailScreen> {
         _fullManga = result.manga;
         _chapters = result.chapters;
       });
+    }
+    // Seeing the manga's current chapter list clears any "new chapters" flag.
+    if (result.chapters.isNotEmpty) {
+      ref.read(libraryUpdatesProvider.notifier).acknowledge(
+            widget.manga.url,
+            latestChapterUrl: result.chapters.first.url,
+          );
     }
     return result;
   }
@@ -149,7 +158,7 @@ class _MangaDetailScreenState extends ConsumerState<MangaDetailScreen> {
                   if (manga.coverUrl != null)
                     Image.network(
                       manga.coverUrl!,
-                      headers: mangaCoverHeaders(manga.coverUrl!),
+                      headers: sourceImageHeaders(manga.coverUrl!),
                       fit: BoxFit.cover,
                       errorBuilder: (_, __, ___) => Container(
                         color: theme.colorScheme.surfaceContainerHigh,
@@ -411,12 +420,14 @@ class _MangaDetailScreenState extends ConsumerState<MangaDetailScreen> {
       return;
     }
     if (_chapters.isNotEmpty) {
-      final first = _chapters.first;
+      // The site lists chapters newest-first, so the first chapter the user
+      // has not started is the last entry, not the first.
+      final firstChapter = _chapters.last;
       AppRoutes.openReader(
         context,
         manga: _manga,
-        chapterUrl: first.url,
-        chapterTitle: first.title,
+        chapterUrl: firstChapter.url,
+        chapterTitle: firstChapter.title,
       );
     }
   }

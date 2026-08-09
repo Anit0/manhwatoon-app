@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -7,6 +8,7 @@ import '../../models/manga.dart';
 import '../../models/reader_models.dart';
 import '../constants/app_constants.dart';
 import '../network/madara_parser.dart';
+import '../network/scraper_health.dart';
 import 'manga_source.dart';
 
 /// Thrown when a network call fails.
@@ -59,8 +61,9 @@ class MadaraSource implements MangaSource {
         'User-Agent': AppConstants.userAgent,
         'Accept-Language': 'en-US,en;q=0.9',
       },
-      connectTimeout: const Duration(seconds: 15),
-      receiveTimeout: const Duration(seconds: 30),
+      connectTimeout: AppConstants.networkTimeout,
+      receiveTimeout: AppConstants.networkTimeout,
+      sendTimeout: AppConstants.networkTimeout,
     ));
     return dio;
   }
@@ -77,7 +80,9 @@ class MadaraSource implements MangaSource {
       }
     }
     try {
-      final response = await _dio.get<String>(url);
+      final response = await _dio
+          .get<String>(url)
+          .timeout(AppConstants.networkTimeout);
       final body = response.data ?? '';
       _htmlCache[url] = (at: DateTime.now(), body: body);
       return body;
@@ -86,6 +91,8 @@ class MadaraSource implements MangaSource {
         'Failed to load ${_shortUrl(url)}: ${e.message ?? 'network error'}',
         statusCode: e.response?.statusCode,
       );
+    } on TimeoutException {
+      throw SiteApiException('Timed out loading ${_shortUrl(url)}');
     }
   }
 
@@ -94,32 +101,40 @@ class MadaraSource implements MangaSource {
     Map<String, dynamic> data,
   ) async {
     try {
-      final response = await _dio.post<String>(
-        url,
-        data: data,
-        options: Options(
-          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        ),
-      );
+      final response = await _dio
+          .post<String>(
+            url,
+            data: data,
+            options: Options(
+              headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            ),
+          )
+          .timeout(AppConstants.networkTimeout);
       return response.data ?? '';
     } on DioException catch (e) {
       throw SiteApiException(
         'Failed to load ${_shortUrl(url)}: ${e.message ?? 'network error'}',
         statusCode: e.response?.statusCode,
       );
+    } on TimeoutException {
+      throw SiteApiException('Timed out loading ${_shortUrl(url)}');
     }
   }
 
   @override
   Future<List<Manga>> fetchHomeSlider({bool useCache = true}) async {
     final html = await _getHtml('/', useCache: useCache);
-    return MadaraParser.parseSlider(html);
+    final result = MadaraParser.parseSlider(html);
+    _warnIfEmpty('homeSlider', result);
+    return result;
   }
 
   @override
   Future<List<Manga>> fetchHomeLatest({bool useCache = true}) async {
     final html = await _getHtml('/', useCache: useCache);
-    return MadaraParser.parseMangaGrid(html);
+    final result = MadaraParser.parseMangaGrid(html);
+    _warnIfEmpty('homeLatest', result);
+    return result;
   }
 
   @override
@@ -132,9 +147,14 @@ class MadaraSource implements MangaSource {
     final base = genreSlug != null
         ? '$baseUrl$genrePathPrefix$genreSlug/'
         : '$baseUrl/manga/';
-    final url = '$base?m_orderby=${order.query}&page=$page';
+    // The site 301-redirects `page=1` (dropping the param), so only add it
+    // for subsequent pages to avoid a wasted round trip.
+    final pageParam = page > 1 ? '&page=$page' : '';
+    final url = '$base?m_orderby=${order.query}$pageParam';
     final html = await _getHtml(url, useCache: useCache);
-    return MadaraParser.parseMangaGrid(html);
+    final result = MadaraParser.parseMangaGrid(html);
+    _warnIfEmpty('archiveGrid', result);
+    return result;
   }
 
   @override
@@ -185,13 +205,16 @@ class MadaraSource implements MangaSource {
       if (order != null) 'm_orderby': order.query,
     });
     final html = await _getHtml(uri.toString());
-    return MadaraParser.parseSearchResults(html);
+    final result = MadaraParser.parseSearchResults(html);
+    _warnIfEmpty('searchResults', result);
+    return result;
   }
 
   @override
   Future<MangaDetailResult> fetchMangaDetail(String url) async {
     final html = await _getHtml(url);
     final manga = MadaraParser.parseDetail(html);
+    if (manga.title.isEmpty) _warnIfEmpty('detail', [manga]);
 
     // Resolve chapter list.
     final postId = manga.postId;
@@ -201,6 +224,7 @@ class MadaraSource implements MangaSource {
         {'manga_id': '$postId'},
       );
       final chapters = MadaraParser.parseChapterList(chapterBody);
+      _warnIfEmpty('chapterList', chapters);
       return MangaDetailResult(manga: manga, chapters: chapters);
     }
     return MangaDetailResult(manga: manga, chapters: const []);
@@ -209,7 +233,9 @@ class MadaraSource implements MangaSource {
   @override
   Future<List<MangaPage>> fetchReadingPages(String chapterUrl) async {
     final html = await _getHtml(chapterUrl, useCache: false);
-    return MadaraParser.parseReadingPages(html, chapterUrl: chapterUrl);
+    final pages = MadaraParser.parseReadingPages(html, chapterUrl: chapterUrl);
+    _warnIfEmpty('readingPages', pages);
+    return pages;
   }
 
   @override
@@ -227,13 +253,15 @@ class MadaraSource implements MangaSource {
 
   @override
   Future<Response<Uint8List>> downloadImageBytes(String url) async {
-    final response = await _dio.get<List<int>>(
-      url,
-      options: Options(
-        responseType: ResponseType.bytes,
-        headers: {'Referer': '$baseUrl/'},
-      ),
-    );
+    final response = await _dio
+        .get<List<int>>(
+          url,
+          options: Options(
+            responseType: ResponseType.bytes,
+            headers: {'Referer': '$baseUrl/'},
+          ),
+        )
+        .timeout(const Duration(seconds: 30));
     final bytes = response.data == null ? Uint8List(0) : Uint8List.fromList(response.data!);
     return Response<Uint8List>(
       requestOptions: response.requestOptions,
@@ -248,6 +276,12 @@ class MadaraSource implements MangaSource {
   }
 
   dynamic _jsonDecode(String body) => jsonDecode(body);
+
+  /// Flags a parser that came back empty after a successful HTTP call, so
+  /// upstream markup changes surface early instead of as silent empty screens.
+  void _warnIfEmpty<T>(String kind, List<T> items) {
+    if (items.isEmpty) ScraperHealth.report(name, kind);
+  }
 
   String _shortUrl(String url) {
     final uri = Uri.parse(url);

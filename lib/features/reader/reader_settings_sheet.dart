@@ -60,6 +60,8 @@ class ReaderSettingsSheet extends ConsumerWidget {
                     value: controller.brightness,
                     min: 0.2,
                     max: 1.0,
+                    semanticFormatterCallback: (v) =>
+                        'Screen brightness ${(v * 100).round()}%',
                     onChanged: (v) {
                       controller.brightness = v;
                       ref.read(settingsProvider.notifier).setReaderBrightness(v);
@@ -99,6 +101,8 @@ class ReaderSettingsSheet extends ConsumerWidget {
                       max: 3.0,
                       divisions: 28,
                       label: '${controller.autoScrollSpeed.toStringAsFixed(1)}x',
+                      semanticFormatterCallback: (v) =>
+                          'Auto scroll speed ${v.toStringAsFixed(1)}x',
                       onChanged: (v) {
                         controller.autoScrollSpeed = v;
                         ref

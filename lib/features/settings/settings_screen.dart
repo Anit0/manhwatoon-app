@@ -1,8 +1,14 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/constants/app_constants.dart';
+import '../../core/network/update_checker.dart';
 import '../../core/providers/app_providers.dart';
 import '../../core/providers/settings_provider.dart';
 import '../../core/sources/source_registry.dart';
@@ -175,13 +181,25 @@ class SettingsScreen extends ConsumerWidget {
               }
             },
           ),
+          ListTile(
+            leading: const Icon(Icons.upload_file_rounded),
+            title: const Text('Export library'),
+            subtitle: const Text('Save library, collections & history to a file'),
+            onTap: () => _exportLibrary(context, ref),
+          ),
+          ListTile(
+            leading: const Icon(Icons.file_download_rounded),
+            title: const Text('Import library'),
+            subtitle: const Text('Restore from an exported backup file'),
+            onTap: () => _importLibrary(context, ref),
+          ),
 
           const Divider(height: 24),
           _Header('About'),
           const ListTile(
             leading: Icon(Icons.info_outline_rounded),
             title: Text('ManhwaToon'),
-            subtitle: Text('v1.0.0 • A premium manga reader'),
+            subtitle: Text('v1.0.3 • A premium manga reader'),
           ),
           ListTile(
             leading: const Icon(Icons.copyright_rounded),
@@ -197,7 +215,84 @@ class SettingsScreen extends ConsumerWidget {
               mode: LaunchMode.externalApplication,
             ),
           ),
+          ListTile(
+            leading: const Icon(Icons.system_update_alt_rounded),
+            title: const Text('Check for updates'),
+            subtitle: const Text('See if a newer version is available'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _checkForUpdates(context),
+          ),
           const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _checkForUpdates(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
+      const SnackBar(content: Text('Checking for updates...')),
+    );
+
+    String current = '1.0.0';
+    try {
+      current = (await PackageInfo.fromPlatform()).version;
+    } catch (_) {}
+
+    final update = await UpdateChecker().check(currentVersion: current);
+
+    if (!context.mounted) return;
+    if (update == null) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('You are up to date (v$current)')),
+      );
+      return;
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.system_update_alt_rounded),
+        title: Text('Update available (v${update.version})'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'A newer version of ManhwaToon is available. '
+                'Download it from the release page.',
+              ),
+              if (update.notes != null && update.notes!.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                const Text(
+                  "What's new:",
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 4),
+                SelectableText(
+                  update.notes!,
+                  style: Theme.of(ctx).textTheme.bodySmall,
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Not now'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              launchUrl(
+                Uri.parse(update.url),
+                mode: LaunchMode.externalApplication,
+              );
+            },
+            child: const Text('Download'),
+          ),
         ],
       ),
     );
@@ -311,6 +406,122 @@ class SettingsScreen extends ConsumerWidget {
         },
       ),
     );
+  }
+
+  Future<Directory> _backupDir() async {
+    final docs = await getApplicationDocumentsDirectory();
+    final dir = Directory(p.join(docs.path, 'manhwa_toon_backups'));
+    await dir.create(recursive: true);
+    return dir;
+  }
+
+  Future<void> _exportLibrary(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
+      const SnackBar(content: Text('Exporting library...')),
+    );
+    try {
+      final json = await ref.read(repositoryProvider).exportLibraryJson();
+      final dir = await _backupDir();
+      final now = DateTime.now();
+      final stamp = '${now.year}${now.month.toString().padLeft(2, '0')}'
+          '${now.day.toString().padLeft(2, '0')}_'
+          '${now.hour.toString().padLeft(2, '0')}'
+          '${now.minute.toString().padLeft(2, '0')}';
+      final file = File(p.join(dir.path, 'manhwatoon_library_$stamp.json'));
+      await file.writeAsString(json, flush: true);
+      if (!context.mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text('Library exported to ${file.path}')),
+      );
+    } catch (e) {
+      if (context.mounted) {
+        messenger.showSnackBar(
+          SnackBar(content: Text('Export failed: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _importLibrary(BuildContext context, WidgetRef ref) async {
+    final dir = await _backupDir();
+    final files = dir
+        .listSync()
+        .whereType<File>()
+        .where((f) => f.path.endsWith('.json'))
+        .toList()
+      ..sort((a, b) => b.path.compareTo(a.path));
+    if (files.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No backup files found. Export a library first.'),
+        ),
+      );
+      return;
+    }
+
+    final selected = await showDialog<File>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Import library backup'),
+        children: [
+          for (final f in files)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, f),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Text(p.basename(f.path)),
+              ),
+            ),
+        ],
+      ),
+    );
+    if (selected == null || !context.mounted) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Restore library?'),
+        content: const Text(
+          'This merges the backup into your current library. '
+          'Existing entries are updated, not duplicated. '
+          'This is local-only — no data is sent anywhere.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Import'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    try {
+      final json = await selected.readAsString();
+      final result = await ref.read(repositoryProvider).importLibraryJson(json);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Imported ${result.library} mangas, ${result.collections} collections, '
+              '${result.collectionItems} collection items, ${result.history} history, '
+              '${result.tags} tags',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Import failed: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _clearDownloads(BuildContext context, WidgetRef ref) async {

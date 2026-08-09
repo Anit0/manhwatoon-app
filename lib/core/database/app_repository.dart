@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 
 import '../../models/manga.dart';
@@ -381,4 +383,284 @@ class AppRepository {
   Future<List<ReadingSession>> getReadingSessionsForManga(String mangaUrl) =>
       (_db.select(_db.readingSessions)..where((t) => t.mangaUrl.equals(mangaUrl)))
           .get();
+
+  // ---------------------------------------------------------------------
+  // Library backup / restore
+  // ---------------------------------------------------------------------
+
+  /// Serializes library + collections + history + tags into a JSON document
+  /// that can be re-imported on this or another device.
+  Future<String> exportLibraryJson() async {
+    final library = await (_db.select(_db.libraryItems)).get();
+    final collections = await (_db.select(_db.collections)).get();
+    final history = await (_db.select(_db.readingHistory)).get();
+    final tags = await (_db.select(_db.tags)).get();
+    final mangaTags = await (_db.select(_db.mangaTags)).get();
+
+    final collectionItems = <Map<String, dynamic>>[];
+    for (final c in collections) {
+      final items = await (_db.select(_db.collectionItems)
+            ..where((t) => t.collectionId.equals(c.id)))
+          .get();
+      collectionItems.add({
+        'collectionId': c.id,
+        'items': [
+          for (final i in items)
+            {
+              'mangaUrl': i.mangaUrl,
+              'title': i.title,
+              'coverUrl': i.coverUrl,
+              'addedAt': i.addedAt.toIso8601String(),
+            },
+        ],
+      });
+    }
+
+    String? iso(DateTime? d) => d?.toIso8601String();
+
+    return jsonEncode({
+      'app': 'ManhwaToon',
+      'format': 1,
+      'exportedAt': DateTime.now().toIso8601String(),
+      'library': [
+        for (final l in library)
+          {
+            'mangaUrl': l.mangaUrl,
+            'title': l.title,
+            'coverUrl': l.coverUrl,
+            'postId': l.postId,
+            'favorite': l.favorite,
+            'bookmark': l.bookmark,
+            'status': l.status,
+            'addedAt': iso(l.addedAt),
+            'lastReadAt': iso(l.lastReadAt),
+            'lastChapterTitle': l.lastChapterTitle,
+            'lastChapterUrl': l.lastChapterUrl,
+            'genres': l.genres,
+            'author': l.author,
+            'type': l.type,
+            'releaseYear': l.releaseYear,
+            'isAdult': l.isAdult,
+          },
+      ],
+      'collections': [
+        for (final c in collections)
+          {
+            'id': c.id,
+            'name': c.name,
+            'description': c.description,
+            'createdAt': iso(c.createdAt),
+            'sortOrder': c.sortOrder,
+          },
+      ],
+      'collectionItems': collectionItems,
+      'history': [
+        for (final h in history)
+          {
+            'mangaUrl': h.mangaUrl,
+            'mangaTitle': h.mangaTitle,
+            'coverUrl': h.coverUrl,
+            'chapterUrl': h.chapterUrl,
+            'chapterTitle': h.chapterTitle,
+            'pageIndex': h.pageIndex,
+            'totalPages': h.totalPages,
+            'readAt': iso(h.readAt),
+          },
+      ],
+      'tags': [
+        for (final t in tags)
+          {
+            'id': t.id,
+            'name': t.name,
+            'color': t.color,
+            'mangaUrls': [
+              for (final mt in mangaTags.where((mt) => mt.tagId == t.id)) mt.mangaUrl,
+            ],
+          },
+      ],
+    });
+  }
+
+  /// Imports a backup produced by [exportLibraryJson].
+  ///
+  /// Library items and history are upserted (existing entries are updated, not
+  /// duplicated). Collections and tags are recreated under new ids.
+  Future<LibraryImportResult> importLibraryJson(String json) async {
+    final decoded = jsonDecode(json);
+    if (decoded is! Map) {
+      throw const FormatException('Backup file is not a valid object');
+    }
+
+    var libraryCount = 0;
+    var collectionCount = 0;
+    var collectionItemCount = 0;
+    var historyCount = 0;
+    var tagCount = 0;
+
+    await _db.transaction(() async {
+      final libraryRaw = decoded['library'];
+      if (libraryRaw is List) {
+        for (final raw in libraryRaw) {
+          if (raw is! Map) continue;
+          final mangaUrl = raw['mangaUrl'];
+          final title = raw['title'];
+          if (mangaUrl is! String || title is! String) continue;
+          final existing = await (_db.select(_db.libraryItems)
+                ..where((t) => t.mangaUrl.equals(mangaUrl)))
+              .getSingleOrNull();
+          await _db.libraryItems.insertOnConflictUpdate(
+            LibraryItemsCompanion.insert(
+              mangaUrl: mangaUrl,
+              title: title,
+              coverUrl: Value(raw['coverUrl'] as String?),
+              postId: Value(raw['postId'] as int?),
+              favorite: Value(raw['favorite'] as bool? ?? existing?.favorite ?? false),
+              bookmark: Value(raw['bookmark'] as bool? ?? existing?.bookmark ?? false),
+              status: Value(raw['status'] as String?),
+              addedAt: Value(DateTime.tryParse(raw['addedAt'] as String? ?? '') ??
+                  DateTime.now()),
+              lastReadAt: Value(DateTime.tryParse(raw['lastReadAt'] as String? ?? '')),
+              lastChapterTitle: Value(raw['lastChapterTitle'] as String?),
+              lastChapterUrl: Value(raw['lastChapterUrl'] as String?),
+              genres: Value(raw['genres'] as String?),
+              author: Value(raw['author'] as String?),
+              type: Value(raw['type'] as String?),
+              releaseYear: Value(raw['releaseYear'] as String?),
+              isAdult: Value(raw['isAdult'] as bool? ?? false),
+            ),
+          );
+          libraryCount++;
+        }
+      }
+
+      // Collections are re-created so their auto-increment ids stay valid.
+      final idMap = <int, int>{};
+      final collectionsRaw = decoded['collections'];
+      if (collectionsRaw is List) {
+        for (final raw in collectionsRaw) {
+          if (raw is! Map) continue;
+          final name = raw['name'];
+          if (name is! String || name.isEmpty) continue;
+          final oldId = raw['id'] as int?;
+          final id = await _db.into(_db.collections).insert(
+                CollectionsCompanion.insert(
+                  name: name,
+                  description: Value(raw['description'] as String?),
+                  sortOrder: Value(raw['sortOrder'] as int? ?? 0),
+                ),
+              );
+          if (oldId != null) idMap[oldId] = id;
+          collectionCount++;
+        }
+      }
+
+      final itemsRaw = decoded['collectionItems'];
+      if (itemsRaw is List) {
+        for (final group in itemsRaw) {
+          if (group is! Map) continue;
+          final oldCollectionId = group['collectionId'] as int?;
+          final newCollectionId = oldCollectionId != null ? idMap[oldCollectionId] : null;
+          final items = group['items'];
+          if (newCollectionId == null || items is! List) continue;
+          for (final raw in items) {
+            if (raw is! Map) continue;
+            final mangaUrl = raw['mangaUrl'];
+            final title = raw['title'];
+            if (mangaUrl is! String || title is! String) continue;
+            await _db.collectionItems.insertOnConflictUpdate(
+              CollectionItemsCompanion.insert(
+                collectionId: newCollectionId,
+                mangaUrl: mangaUrl,
+                title: title,
+                coverUrl: Value(raw['coverUrl'] as String?),
+              ),
+            );
+            collectionItemCount++;
+          }
+        }
+      }
+
+      final historyRaw = decoded['history'];
+      if (historyRaw is List) {
+        for (final raw in historyRaw) {
+          if (raw is! Map) continue;
+          final mangaUrl = raw['mangaUrl'];
+          final mangaTitle = raw['mangaTitle'];
+          final chapterUrl = raw['chapterUrl'];
+          if (mangaUrl is! String ||
+              mangaTitle is! String ||
+              chapterUrl is! String) {
+            continue;
+          }
+          await _db.readingHistory.insertOnConflictUpdate(
+            ReadingHistoryCompanion.insert(
+              mangaUrl: mangaUrl,
+              mangaTitle: mangaTitle,
+              coverUrl: Value(raw['coverUrl'] as String?),
+              chapterUrl: chapterUrl,
+              chapterTitle: raw['chapterTitle'] as String? ?? '',
+              pageIndex: Value(raw['pageIndex'] as int? ?? 0),
+              totalPages: Value(raw['totalPages'] as int? ?? 0),
+            ),
+          );
+          historyCount++;
+        }
+      }
+
+      final tagsRaw = decoded['tags'];
+      if (tagsRaw is List) {
+        for (final raw in tagsRaw) {
+          if (raw is! Map) continue;
+          final name = raw['name'];
+          if (name is! String || name.isEmpty) continue;
+          final existingTag = await (_db.select(_db.tags)
+                ..where((t) => t.name.equals(name)))
+              .getSingleOrNull();
+          final tagId = existingTag?.id ??
+              await _db.into(_db.tags).insert(
+                    TagsCompanion.insert(
+                      name: name,
+                      color: Value(raw['color'] as String?),
+                    ),
+                  );
+          final mangaUrls = raw['mangaUrls'];
+          if (mangaUrls is List) {
+            for (final url in mangaUrls) {
+              if (url is! String || url.isEmpty) continue;
+              await _db.into(_db.mangaTags).insert(
+                MangaTagsCompanion.insert(tagId: tagId, mangaUrl: url),
+                mode: InsertMode.insertOrIgnore,
+              );
+            }
+          }
+          tagCount++;
+        }
+      }
+    });
+
+    return LibraryImportResult(
+      library: libraryCount,
+      collections: collectionCount,
+      collectionItems: collectionItemCount,
+      history: historyCount,
+      tags: tagCount,
+    );
+  }
+}
+
+/// Summary of what an [importLibraryJson] actually changed.
+class LibraryImportResult {
+  const LibraryImportResult({
+    required this.library,
+    required this.collections,
+    required this.collectionItems,
+    required this.history,
+    required this.tags,
+  });
+
+  final int library;
+  final int collections;
+  final int collectionItems;
+  final int history;
+  final int tags;
 }

@@ -7,7 +7,6 @@ import '../../../core/database/app_database.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/providers/settings_provider.dart';
 import '../../../models/manga.dart';
-
 /// Aggregated payload rendered on the home screen.
 class HomeData {
   const HomeData({
@@ -47,7 +46,7 @@ class HomeDataNotifier extends AsyncNotifier<HomeData> {
 
     Future<List<Manga>> guarded(Future<List<Manga>> f) async {
       try {
-        final list = await f;
+        final list = await f.timeout(const Duration(seconds: 12));
         if (hideAdult) return list.where((m) => !m.isAdult).toList();
         return list;
       } catch (_) {
@@ -61,7 +60,10 @@ class HomeDataNotifier extends AsyncNotifier<HomeData> {
       guarded(api.fetchHomeLatest()),
       guarded(api.fetchArchive(SortOrder.rating, page: 2)),
       guarded(api.fetchArchive(SortOrder.rating, page: 1)),
-    ]);
+    ]).timeout(const Duration(seconds: 30));
+    if (results.length < 5) {
+      return const HomeData();
+    }
 
     final suggestions = [...results[0], ...results[1], ...results[4]].isEmpty
         ? const <Manga>[]

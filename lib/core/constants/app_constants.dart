@@ -20,6 +20,11 @@ class AppConstants {
   /// In-memory HTML cache TTL (milliseconds).
   static const Duration htmlCacheTtl = Duration(minutes: 10);
 
+  /// Hard cap for a single HTML/API request. The server can hang (e.g. while
+  /// stalling on a redirect) without triggering Dio's receive-timeout, so we
+  /// enforce an explicit deadline on every call.
+  static const Duration networkTimeout = Duration(seconds: 15);
+
   /// App name.
   static const String appName = 'ManhwaToon';
 

@@ -35,3 +35,11 @@ MangaSource sourceById(String? id) {
     orElse: () => manhwaToonSource,
   );
 }
+
+/// HTTP headers required to fetch an image hosted by a source.
+///
+/// Some Madara deployments (e.g. MangaYY) serve covers and chapter images
+/// from domains that return 403 unless a `Referer` header for the site is sent.
+Map<String, String> sourceImageHeaders(String url) {
+  return {'referer': '${sourceForUrl(url).baseUrl}/'};
+}

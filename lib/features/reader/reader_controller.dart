@@ -14,20 +14,25 @@ import '../downloads/download_manager.dart';
 
 /// A single page source resolved to either a network URL or a local file.
 class ReaderPage {
-  const ReaderPage.network(this.imageUrl)
+  const ReaderPage.network(this.imageUrl, {this.headers})
       : filePath = null,
         isLocal = false;
   const ReaderPage.local(this.filePath)
       : imageUrl = null,
-        isLocal = true;
+        isLocal = true,
+        headers = null;
 
   final String? imageUrl;
   final String? filePath;
+  final Map<String, String>? headers;
   final bool isLocal;
 
   ImageProvider resolve() {
     if (isLocal && filePath != null) return FileImage(File(filePath!));
-    return CachedNetworkImageProvider(imageUrl ?? '');
+    return CachedNetworkImageProvider(
+      imageUrl ?? '',
+      headers: headers,
+    );
   }
 }
 
@@ -146,7 +151,12 @@ class ReaderController extends ChangeNotifier {
 
       if (_pages.isEmpty) {
         final pages = await _api.fetchReadingPages(chapterUrl);
-        _pages = [for (final p in pages) ReaderPage.network(p.imageUrl)];
+        // Some sources (e.g. MangaYY) serve chapter images from CDNs that
+        // return 403 unless a Referer for the site is sent.
+        final headers = {'referer': '${_api.baseUrl}/'};
+        _pages = [
+          for (final p in pages) ReaderPage.network(p.imageUrl, headers: headers),
+        ];
         _state = ReaderLoadState.ready;
       }
 
@@ -164,6 +174,9 @@ class ReaderController extends ChangeNotifier {
       notifyListeners();
     }
   }
+
+  /// Retries loading the chapter after a failure (keeps the current page).
+  Future<void> retry() => _load();
 
   /// Sets the current page index (from scroll or pager).
   void setCurrentIndex(int index) {

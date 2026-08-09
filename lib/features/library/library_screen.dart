@@ -11,15 +11,27 @@ import '../../models/manga.dart';
 import '../downloads/downloads_screen.dart';
 import '../stats/stats_screen.dart';
 import 'collections_screen.dart';
+import 'library_updates_provider.dart';
 
 enum _LibraryTab {
   all('All'),
   favorites('Favorites'),
   history('History'),
-  downloads('Downloads');
+  downloads('Downloads'),
+  updates('Updates');
 
   const _LibraryTab(this.label);
   final String label;
+}
+
+enum _LibrarySort {
+  dateAdded('Date added', Icons.schedule_rounded),
+  title('Title A–Z', Icons.sort_by_alpha_rounded),
+  lastRead('Last read', Icons.history_rounded);
+
+  const _LibrarySort(this.label, this.icon);
+  final String label;
+  final IconData icon;
 }
 
 class LibraryScreen extends ConsumerStatefulWidget {
@@ -31,9 +43,12 @@ class LibraryScreen extends ConsumerStatefulWidget {
 
 class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   _LibraryTab _tab = _LibraryTab.all;
+  _LibrarySort _sort = _LibrarySort.dateAdded;
 
   @override
   Widget build(BuildContext context) {
+    final updates = ref.watch(libraryUpdatesProvider).value ?? const <LibraryUpdate>[];
+    final updatesCount = updates.length;
     return Scaffold(
       body: Column(
         children: [
@@ -69,12 +84,32 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                     },
                     icon: const Icon(Icons.insights_rounded),
                   ),
+                  PopupMenuButton<_LibrarySort>(
+                    tooltip: 'Sort library',
+                    icon: const Icon(Icons.sort_rounded),
+                    initialValue: _sort,
+                    onSelected: (s) => setState(() => _sort = s),
+                    itemBuilder: (context) => [
+                      for (final s in _LibrarySort.values)
+                        PopupMenuItem(
+                          value: s,
+                          child: Row(
+                            children: [
+                              Icon(s.icon, size: 20),
+                              const SizedBox(width: 12),
+                              Text(s.label),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
                 ],
               ),
             ),
           ),
           _TabBar(
             current: _tab,
+            updatesCount: updatesCount,
             onChanged: (t) => setState(() => _tab = t),
           ),
           Expanded(child: _buildContent()),
@@ -86,15 +121,18 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   Widget _buildContent() {
     switch (_tab) {
       case _LibraryTab.all:
-        return const _LibraryGrid(
+        return _LibraryGrid(
           filter: _LibraryFilter.all,
+          sort: _sort,
         );
       case _LibraryTab.favorites:
-        return const _LibraryGrid(filter: _LibraryFilter.favorites);
+        return _LibraryGrid(filter: _LibraryFilter.favorites, sort: _sort);
       case _LibraryTab.history:
         return const _HistoryView();
       case _LibraryTab.downloads:
         return const DownloadsScreen();
+      case _LibraryTab.updates:
+        return const _UpdatesView();
     }
   }
 }
@@ -112,9 +150,14 @@ class SliverSafeAreaLike extends StatelessWidget {
 }
 
 class _TabBar extends StatelessWidget {
-  const _TabBar({required this.current, required this.onChanged});
+  const _TabBar({
+    required this.current,
+    required this.updatesCount,
+    required this.onChanged,
+  });
 
   final _LibraryTab current;
+  final int updatesCount;
   final ValueChanged<_LibraryTab> onChanged;
 
   @override
@@ -128,7 +171,13 @@ class _TabBar extends StatelessWidget {
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
             child: ChoiceChip(
-              label: Text(tab.label),
+              label: tab == _LibraryTab.updates
+                  ? Badge(
+                      isLabelVisible: updatesCount > 0,
+                      label: Text('$updatesCount'),
+                      child: Text(tab.label),
+                    )
+                  : Text(tab.label),
               selected: current == tab,
               showCheckmark: false,
               onSelected: (_) => onChanged(tab),
@@ -143,9 +192,10 @@ class _TabBar extends StatelessWidget {
 enum _LibraryFilter { all, favorites }
 
 class _LibraryGrid extends ConsumerWidget {
-  const _LibraryGrid({required this.filter});
+  const _LibraryGrid({required this.filter, required this.sort});
 
   final _LibraryFilter filter;
+  final _LibrarySort sort;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -162,6 +212,7 @@ class _LibraryGrid extends ConsumerWidget {
         if (filter == _LibraryFilter.favorites) {
           list = items.where((i) => i.favorite).toList();
         }
+        list = _applySort(list, sort);
         if (list.isEmpty) {
           return const EmptyState(
             icon: Icons.collections_bookmark_rounded,
@@ -190,6 +241,27 @@ class _LibraryGrid extends ConsumerWidget {
       },
     );
   }
+
+  List<LibraryItem> _applySort(List<LibraryItem> items, _LibrarySort sort) {
+    switch (sort) {
+      case _LibrarySort.title:
+        return [...items]
+          ..sort((a, b) =>
+              a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+      case _LibrarySort.lastRead:
+        return [...items]..sort((a, b) {
+            final aRead = a.lastReadAt;
+            final bRead = b.lastReadAt;
+            if (aRead == null && bRead == null) return 0;
+            if (aRead == null) return 1;
+            if (bRead == null) return -1;
+            return bRead.compareTo(aRead);
+          });
+      case _LibrarySort.dateAdded:
+        // The provider already orders by addedAt (newest first).
+        return items;
+    }
+  }
 }
 
 Manga _mangaFromLibrary(LibraryItem item) {
@@ -202,6 +274,69 @@ Manga _mangaFromLibrary(LibraryItem item) {
     latestChapterUrl: item.lastChapterUrl,
     isAdult: item.isAdult,
   );
+}
+
+/// Lists library manga that gained new chapters since last acknowledged.
+class _UpdatesView extends ConsumerWidget {
+  const _UpdatesView();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final updates = ref.watch(libraryUpdatesProvider);
+    return updates.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => EmptyState(
+        icon: Icons.cloud_off_rounded,
+        title: 'Could not check updates',
+        message: '$e\nPull down to try again.',
+      ),
+      data: (list) {
+        if (list.isEmpty) {
+          return const EmptyState(
+            icon: Icons.update_rounded,
+            title: 'No new chapters',
+            message: 'Followed manga with new chapters will show up here.',
+          );
+        }
+        return RefreshIndicator(
+          onRefresh: () =>
+              ref.read(libraryUpdatesProvider.notifier).refresh(),
+          child: ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: list.length,
+            itemBuilder: (context, index) {
+              final update = list[index];
+              final manga = _mangaFromLibrary(update.item);
+              return Card(
+                child: ListTile(
+                  onTap: () => AppRoutes.openManga(context, manga),
+                  leading: SizedBox(
+                    width: 48,
+                    height: 64,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: MangaCoverImage(manga: manga),
+                    ),
+                  ),
+                  title: Text(
+                    manga.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(
+                    'New: ${update.latestChapterTitle ?? 'chapter'}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
 }
 
 class _HistoryView extends ConsumerWidget {

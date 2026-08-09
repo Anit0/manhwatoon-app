@@ -17,6 +17,10 @@ import '../../models/manga.dart';
 /// Each queued chapter is fetched (page list + images) in the background and
 /// written to `{documents}/downloads/{sourceId}/{mangaSlug}/{chapterSlug}/page-N.jpg`.
 /// Progress is persisted through [AppRepository] so it survives restarts.
+///
+/// Downloading is throttled: at most [maxConcurrent] chapters download at
+/// once, and each individual image is retried a few times before the chapter
+/// is marked as failed.
 class DownloadManager {
   DownloadManager({
     required AppRepository repository,
@@ -24,11 +28,19 @@ class DownloadManager {
   })  : _repository = repository,
         _resolveSource = resolveSource;
 
+  /// Maximum number of chapters downloading at the same time.
+  static const int maxConcurrent = 2;
+
+  /// How many times a single page image is attempted before giving up.
+  static const int imageAttempts = 3;
+
   final AppRepository _repository;
   final MangaSource Function(String url) _resolveSource;
 
   /// Chapter URLs that are currently being processed (prevents duplicates).
   final Set<String> _active = {};
+  final List<String> _queue = [];
+  int _activeCount = 0;
   bool _clearing = false;
 
   String _slugFromUrl(String url) {
@@ -79,7 +91,25 @@ class DownloadManager {
       totalPages: 0,
       directory: dirPath,
     );
-    unawaited(_process(chapter.url));
+    _schedule(chapter.url);
+  }
+
+  /// Adds a chapter to the worker queue and drains it.
+  void _schedule(String chapterUrl) {
+    if (_active.contains(chapterUrl) || _queue.contains(chapterUrl)) return;
+    _queue.add(chapterUrl);
+    _drain();
+  }
+
+  void _drain() {
+    while (_activeCount < maxConcurrent && _queue.isNotEmpty) {
+      final url = _queue.removeAt(0);
+      _activeCount++;
+      unawaited(_process(url).whenComplete(() {
+        _activeCount--;
+        _drain();
+      }));
+    }
   }
 
   Future<void> _process(String chapterUrl) async {
@@ -115,11 +145,7 @@ class DownloadManager {
         if (await file.exists()) {
           bytes += await file.length();
         } else {
-          final response = await source.downloadImageBytes(page.imageUrl);
-          final data = response.data;
-          if (data == null || data.isEmpty) {
-            throw StateError('Empty image data for ${page.imageUrl}');
-          }
+          final data = await _downloadImageWithRetry(source, page.imageUrl);
           bytes += data.length;
           await file.writeAsBytes(data, flush: true);
         }
@@ -141,6 +167,30 @@ class DownloadManager {
     } finally {
       _active.remove(chapterUrl);
     }
+  }
+
+  /// Downloads a single page image with a few retries on transient failures.
+  Future<List<int>> _downloadImageWithRetry(
+    MangaSource source,
+    String imageUrl,
+  ) async {
+    Object? lastError;
+    for (var attempt = 1; attempt <= imageAttempts; attempt++) {
+      try {
+        final response = await source.downloadImageBytes(imageUrl);
+        final data = response.data;
+        if (data == null || data.isEmpty) {
+          throw StateError('Empty image data for $imageUrl');
+        }
+        return data;
+      } catch (e) {
+        lastError = e;
+        if (attempt < imageAttempts) {
+          await Future<void>.delayed(Duration(milliseconds: 700 * attempt));
+        }
+      }
+    }
+    throw lastError ?? StateError('Failed to download image $imageUrl');
   }
 
   /// Returns the folder containing a fully downloaded chapter, or null.
@@ -176,7 +226,7 @@ class DownloadManager {
       downloadedPages: 0,
       bytesReceived: 0,
     );
-    unawaited(_process(chapterUrl));
+    _schedule(chapterUrl);
   }
 
   /// Deletes all completed downloads (disk + database).

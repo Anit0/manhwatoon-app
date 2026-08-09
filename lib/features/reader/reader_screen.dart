@@ -233,7 +233,12 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              FilledButton(
+              FilledButton.icon(
+                onPressed: () => _controller.retry(),
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Retry'),
+              ),
+              TextButton(
                 onPressed: () => Navigator.of(context).pop(),
                 child: const Text('Back'),
               ),
@@ -328,6 +333,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
           children: [
             IconButton(
               color: Colors.white,
+              tooltip: 'Back',
               icon: const Icon(Icons.arrow_back_rounded),
               onPressed: () => Navigator.of(context).pop(),
             ),
@@ -352,11 +358,13 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
             ),
             IconButton(
               color: Colors.white,
+              tooltip: 'Reader settings',
               icon: const Icon(Icons.settings_rounded),
               onPressed: _openSettings,
             ),
             IconButton(
               color: Colors.white,
+              tooltip: 'Download chapter',
               icon: const Icon(Icons.download_rounded),
               onPressed: () {
                 final dm = ref.read(downloadManagerProvider);
@@ -491,10 +499,16 @@ class _WebtoonPageState extends State<WebtoonPage> {
   ImageStreamListener? _listener;
   final TransformationController _transform = TransformationController();
   bool _zoomed = false;
+  bool _failed = false;
 
   @override
   void initState() {
     super.initState();
+    _resolveImage();
+  }
+
+  void _resolveImage() {
+    _stream?.removeListener(_listener!);
     final image = widget.page.resolve();
     _listener = ImageStreamListener(
       (info, _) {
@@ -504,10 +518,15 @@ class _WebtoonPageState extends State<WebtoonPage> {
               info.image.width.toDouble(),
               info.image.height.toDouble(),
             );
+            _failed = false;
           });
         }
       },
-      onError: (error, stackTrace) {},
+      onError: (error, stackTrace) {
+        if (mounted) {
+          setState(() => _failed = true);
+        }
+      },
     );
     _stream = image.resolve(const ImageConfiguration());
     _stream!.addListener(_listener!);
@@ -528,6 +547,33 @@ class _WebtoonPageState extends State<WebtoonPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_failed) {
+      return SizedBox(
+        width: widget.width,
+        height: widget.width * 1.4,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.broken_image_outlined,
+                  color: Colors.white38, size: 40),
+              const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _failed = false;
+                    _size = null;
+                  });
+                  _resolveImage();
+                },
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     if (_size == null) {
       return SizedBox(
         width: widget.width,
@@ -607,6 +653,11 @@ class _PagedPageState extends State<PagedPage> {
                 fit: BoxFit.contain,
                 color: widget.invert ? const Color(0xFF000000) : null,
                 colorBlendMode: widget.invert ? BlendMode.difference : null,
+                errorBuilder: (_, __, ___) => const Icon(
+                  Icons.broken_image_outlined,
+                  color: Colors.white38,
+                  size: 48,
+                ),
               ),
             ),
           ),
