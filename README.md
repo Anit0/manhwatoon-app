@@ -14,3 +14,5 @@ A few resources to get you started if this is your first Flutter project:
 For help getting started with Flutter development, view the
 [online documentation](https://docs.flutter.dev/), which offers tutorials,
 samples, guidance on mobile development, and a full API reference.
+
+> ⚠️ **Disclaimer:** ManhwaToon does not host, store, or distribute copyrighted manga, manhwa, or manhua. The app indexes publicly available sources and retrieves content directly from third-party sources/CDNs. All copyrights remain with their respective owners.
