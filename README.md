@@ -42,9 +42,9 @@ Open the release page and choose the APK for the newest version listed under **A
 ## Screenshots
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/9f5c6210-6bd5-4462-a9dc-ec4d90a8396a" alt="ManhwaToon app screenshot 1" width="220">
-  <img src="https://github.com/user-attachments/assets/7747875f-130f-4070-ae45-f788908dda12" alt="ManhwaToon app screenshot 2" width="220">
-  <img src="https://github.com/user-attachments/assets/c87ef629-d539-45d8-819c-a8a41e5225d2" alt="ManhwaToon app screenshot 3" width="220">
+  <img src="https://github.com/user-attachments/assets/9a06d822-02db-4590-9595-6afb309373e0" alt="ManhwaToon app screenshot 1" width="220">
+  <img src="https://github.com/user-attachments/assets/808fad79-7a14-40e5-a041-add7b6f64a3a" alt="ManhwaToon app screenshot 2" width="220">
+  <img src="https://github.com/user-attachments/assets/fee84c29-75e7-449d-85b9-32587aa114ea" alt="ManhwaToon app screenshot 3" width="220">
 </p>
 
 ## Features
@@ -140,6 +140,4 @@ For a substantial change, open an issue to discuss the approach first. Keep pull
 
 If ManhwaToon is useful to you, consider [supporting the project on Ko-fi](https://ko-fi.com/anit0) or starring this repository.
 
-## Content notice
-
-Reading content is retrieved from external sources. Availability depends on those sources, and rights to manga, manhwa, manhua, and related artwork remain with their respective owners. Please support creators through official releases where available.
+> ⚠️ **Disclaimer:** ManhwaToon does not host, store, or distribute copyrighted manga, manhwa, or manhua. The app indexes publicly available sources and retrieves content directly from third-party sources/CDNs. All copyrights remain with their respective owners.
