@@ -32,6 +32,17 @@ class StorageKeys {
   static const String cacheMaxBytes = 'cache_max_bytes';
   static const String recentSearchCount = 'recent_search_count';
   static const String activeSourceId = 'active_source_id';
+  static const String incognito = 'incognito';
+  static const String downloadedOnly = 'downloaded_only';
+  static const String showUnreadBadge = 'show_unread_badge';
+  static const String skipDownloadRead = 'skip_download_read';
+  static const String colorTheme = 'color_theme';
+  static const String readerVerticalNav = 'reader_vertical_nav';
+  static const String markDuplicateRead = 'mark_duplicate_read';
+  static const String mangaNotes = 'manga_notes';
+  static const String bookmarkedChapters = 'bookmarked_chapters';
+  static const String readChapters = 'read_chapters';
+  static const String chapterProgress = 'chapter_progress';
 
   /// Per-manga key remembering the last "seen" latest chapter URL, used by the
   /// new-chapter update detection. Value: latest chapter URL.

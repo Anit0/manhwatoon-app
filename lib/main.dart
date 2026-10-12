@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_shell.dart';
+import 'core/ads/ad_scheduler.dart';
 import 'core/providers/settings_provider.dart';
 import 'core/theme/app_theme.dart';
 
@@ -23,8 +24,11 @@ class ManhwaToonApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(settingsProvider);
-    final seed = settings.accentColor;
-    final dynamicColor = settings.dynamicColor;
+    final seed = settings.colorTheme == ColorTheme.defaultTheme
+        ? settings.accentColor
+        : settings.colorTheme.seed;
+    final dynamicColor =
+        settings.dynamicColor && settings.colorTheme == ColorTheme.defaultTheme;
 
     final ThemeData light = AppTheme.light(seed, dynamicColor: dynamicColor);
     final ThemeData dark = AppTheme.dark(seed, dynamicColor: dynamicColor);
@@ -43,6 +47,9 @@ class ManhwaToonApp extends ConsumerWidget {
         AppThemeMode.light => ThemeMode.light,
         AppThemeMode.dark || AppThemeMode.amoled => ThemeMode.dark,
       },
+      builder: (context, child) => AdTapInterceptor(
+        child: child ?? const SizedBox.shrink(),
+      ),
       home: const AppShell(),
     );
   }

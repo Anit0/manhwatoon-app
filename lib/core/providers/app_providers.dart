@@ -18,7 +18,7 @@ class ActiveSourceIdNotifier extends Notifier<String> {
   @override
   String build() {
     final prefs = ref.watch(sharedPreferencesProvider);
-    return prefs?.getString(StorageKeys.activeSourceId) ?? manhwaToonSource.id;
+    return prefs?.getString(StorageKeys.activeSourceId) ?? primarySource.id;
   }
 
   Future<void> select(String id) async {

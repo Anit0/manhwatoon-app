@@ -390,7 +390,7 @@ class AppRepository {
 
   /// Serializes library + collections + history + tags into a JSON document
   /// that can be re-imported on this or another device.
-  Future<String> exportLibraryJson() async {
+  Future<String> exportLibraryJson({Map<String, dynamic>? extras}) async {
     final library = await (_db.select(_db.libraryItems)).get();
     final collections = await (_db.select(_db.collections)).get();
     final history = await (_db.select(_db.readingHistory)).get();
@@ -478,6 +478,7 @@ class AppRepository {
             ],
           },
       ],
+      if (extras != null) 'extras': extras,
     });
   }
 

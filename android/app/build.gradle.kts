@@ -8,7 +8,6 @@ plugins {
 android {
     namespace = "com.manhwa.toon.manhwa_toon"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -43,11 +42,4 @@ flutter {
     source = "../.."
 }
 
-configurations.configureEach {
-    resolutionStrategy {
-        // url_launcher_android pins androidx.core 1.17.0 / browser 1.9.0,
-        // which require AGP 8.9.1+. Force versions compatible with AGP 8.7.3.
-        force("androidx.core:core:1.13.1")
-        force("androidx.browser:browser:1.8.0")
-    }
-}
+

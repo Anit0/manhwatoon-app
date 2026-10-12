@@ -21,6 +21,34 @@ const List<AccentColor> accentColors = [
   AccentColor('Sky', Color(0xFF29B6F6)),
 ];
 
+/// Named palettes inspired by Mihon (Nord, Catppuccin, Tokyo Night, Monochrome).
+enum ColorTheme {
+  defaultTheme('default', 'Default'),
+  nord('nord', 'Nord'),
+  catppuccin('catppuccin', 'Catppuccin'),
+  tokyoNight('tokyo', 'Tokyo Night'),
+  monochrome('mono', 'Monochrome');
+
+  const ColorTheme(this.value, this.label);
+  final String value;
+  final String label;
+
+  static ColorTheme fromValue(String? value) {
+    return ColorTheme.values.firstWhere(
+      (m) => m.value == value,
+      orElse: () => ColorTheme.defaultTheme,
+    );
+  }
+
+  Color get seed => switch (this) {
+        ColorTheme.defaultTheme => const Color(0xFF5C6BC0),
+        ColorTheme.nord => const Color(0xFF88C0D0),
+        ColorTheme.catppuccin => const Color(0xFFCBA6F7),
+        ColorTheme.tokyoNight => const Color(0xFF7AA2F7),
+        ColorTheme.monochrome => const Color(0xFF9E9E9E),
+      };
+}
+
 /// App theme modes supported by settings.
 enum AppThemeMode {
   system('system', 'System'),

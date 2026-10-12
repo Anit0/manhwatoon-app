@@ -21,6 +21,10 @@ abstract class MangaSource {
   /// Root URL of the source, e.g. `https://www.manhwatoon.me`.
   String get baseUrl;
 
+  /// Extra hostnames (CDNs) whose images belong to this source, e.g.
+  /// `cdn.manhwatoon.me`. Used to resolve the correct source for an image URL.
+  List<String> get imageHosts => const [];
+
   /// Fetches the homepage "hot / popular" slider manga.
   Future<List<Manga>> fetchHomeSlider({bool useCache = true});
 

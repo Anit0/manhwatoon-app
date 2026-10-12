@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/manga.dart';
 import 'manga_cover_image.dart';
@@ -10,14 +9,22 @@ class MangaCard extends StatelessWidget {
     super.key,
     required this.manga,
     this.onTap,
+    this.onLongPress,
     this.heroTag,
     this.showRating = true,
+    this.unreadCount,
+    this.downloaded = false,
+    this.bookmarked = false,
   });
 
   final Manga manga;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
   final String? heroTag;
   final bool showRating;
+  final int? unreadCount;
+  final bool downloaded;
+  final bool bookmarked;
 
   static const double coverAspect = 0.68; // width/height
 
@@ -27,6 +34,7 @@ class MangaCard extends StatelessWidget {
     final scheme = theme.colorScheme;
     return GestureDetector(
       onTap: onTap,
+      onLongPress: onLongPress,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -59,6 +67,41 @@ class MangaCard extends StatelessWidget {
                           fontWeight: FontWeight.w800,
                         ),
                       ),
+                    ),
+                  ),
+                if ((unreadCount ?? 0) > 0)
+                  Positioned(
+                    top: 6,
+                    right: 6,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: scheme.primary,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        unreadCount! > 99 ? '99+' : '$unreadCount',
+                        style: TextStyle(
+                          color: scheme.onPrimary,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ),
+                if (downloaded || bookmarked)
+                  Positioned(
+                    bottom: 6,
+                    left: 6,
+                    child: Row(
+                      children: [
+                        if (downloaded)
+                          Icon(Icons.download_done_rounded,
+                              size: 16, color: scheme.primary),
+                        if (bookmarked)
+                          const Icon(Icons.bookmark_rounded,
+                              size: 16, color: Colors.amber),
+                      ],
                     ),
                   ),
                 if (showRating && (manga.rating ?? 0) > 0)
@@ -128,26 +171,29 @@ class MangaCard extends StatelessWidget {
 }
 
 /// Horizontal "row" variant used by search results and detail suggestions.
-class MangaListTile extends ConsumerWidget {
+class MangaListTile extends StatelessWidget {
   const MangaListTile({
     super.key,
     required this.manga,
     this.onTap,
+    this.onLongPress,
     this.subtitle,
     this.trailing,
   });
 
   final Manga manga;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
   final String? subtitle;
   final Widget? trailing;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     return ListTile(
       onTap: onTap,
+      onLongPress: onLongPress,
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       leading: ClipRRect(
         borderRadius: BorderRadius.circular(10),

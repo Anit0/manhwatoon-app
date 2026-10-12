@@ -35,6 +35,13 @@ class AppSettings {
     this.streakReminderEnabled = false,
     this.cacheMaxBytes = 512 * 1024 * 1024,
     this.adultVerified = false,
+    this.incognito = false,
+    this.downloadedOnly = false,
+    this.showUnreadBadge = true,
+    this.skipDownloadRead = false,
+    this.readerVerticalNav = true,
+    this.markDuplicateRead = true,
+    this.colorTheme = ColorTheme.defaultTheme,
   });
 
   final AppThemeMode themeMode;
@@ -57,6 +64,13 @@ class AppSettings {
   final bool streakReminderEnabled;
   final int cacheMaxBytes;
   final bool adultVerified;
+  final bool incognito;
+  final bool downloadedOnly;
+  final bool showUnreadBadge;
+  final bool skipDownloadRead;
+  final bool readerVerticalNav;
+  final bool markDuplicateRead;
+  final ColorTheme colorTheme;
 
   Color get accentColor => accentColors[accentIndex.clamp(0, accentColors.length - 1)].seed;
 
@@ -81,6 +95,13 @@ class AppSettings {
     bool? streakReminderEnabled,
     int? cacheMaxBytes,
     bool? adultVerified,
+    bool? incognito,
+    bool? downloadedOnly,
+    bool? showUnreadBadge,
+    bool? skipDownloadRead,
+    bool? readerVerticalNav,
+    bool? markDuplicateRead,
+    ColorTheme? colorTheme,
   }) {
     return AppSettings(
       themeMode: themeMode ?? this.themeMode,
@@ -104,6 +125,13 @@ class AppSettings {
       streakReminderEnabled: streakReminderEnabled ?? this.streakReminderEnabled,
       cacheMaxBytes: cacheMaxBytes ?? this.cacheMaxBytes,
       adultVerified: adultVerified ?? this.adultVerified,
+      incognito: incognito ?? this.incognito,
+      downloadedOnly: downloadedOnly ?? this.downloadedOnly,
+      showUnreadBadge: showUnreadBadge ?? this.showUnreadBadge,
+      skipDownloadRead: skipDownloadRead ?? this.skipDownloadRead,
+      readerVerticalNav: readerVerticalNav ?? this.readerVerticalNav,
+      markDuplicateRead: markDuplicateRead ?? this.markDuplicateRead,
+      colorTheme: colorTheme ?? this.colorTheme,
     );
   }
 
@@ -148,6 +176,13 @@ class AppSettings {
       streakReminderEnabled: prefs.getBool(StorageKeys.streakReminderEnabled) ?? false,
       cacheMaxBytes: prefs.getInt(StorageKeys.cacheMaxBytes) ?? 512 * 1024 * 1024,
       adultVerified: prefs.getBool(StorageKeys.adultVerified) ?? false,
+      incognito: prefs.getBool(StorageKeys.incognito) ?? false,
+      downloadedOnly: prefs.getBool(StorageKeys.downloadedOnly) ?? false,
+      showUnreadBadge: prefs.getBool(StorageKeys.showUnreadBadge) ?? true,
+      skipDownloadRead: prefs.getBool(StorageKeys.skipDownloadRead) ?? false,
+      readerVerticalNav: prefs.getBool(StorageKeys.readerVerticalNav) ?? true,
+      markDuplicateRead: prefs.getBool(StorageKeys.markDuplicateRead) ?? true,
+      colorTheme: ColorTheme.fromValue(prefs.getString(StorageKeys.colorTheme)),
     );
   }
 
@@ -173,6 +208,13 @@ class AppSettings {
     await prefs.setBool(StorageKeys.streakReminderEnabled, streakReminderEnabled);
     await prefs.setInt(StorageKeys.cacheMaxBytes, cacheMaxBytes);
     await prefs.setBool(StorageKeys.adultVerified, adultVerified);
+    await prefs.setBool(StorageKeys.incognito, incognito);
+    await prefs.setBool(StorageKeys.downloadedOnly, downloadedOnly);
+    await prefs.setBool(StorageKeys.showUnreadBadge, showUnreadBadge);
+    await prefs.setBool(StorageKeys.skipDownloadRead, skipDownloadRead);
+    await prefs.setBool(StorageKeys.readerVerticalNav, readerVerticalNav);
+    await prefs.setBool(StorageKeys.markDuplicateRead, markDuplicateRead);
+    await prefs.setString(StorageKeys.colorTheme, colorTheme.value);
   }
 }
 
@@ -249,6 +291,27 @@ class SettingsNotifier extends Notifier<AppSettings> {
 
   Future<void> setAdultVerified(bool value) =>
       update((s) => s.copyWith(adultVerified: value));
+
+  Future<void> setIncognito(bool value) =>
+      update((s) => s.copyWith(incognito: value));
+
+  Future<void> setDownloadedOnly(bool value) =>
+      update((s) => s.copyWith(downloadedOnly: value));
+
+  Future<void> setShowUnreadBadge(bool value) =>
+      update((s) => s.copyWith(showUnreadBadge: value));
+
+  Future<void> setSkipDownloadRead(bool value) =>
+      update((s) => s.copyWith(skipDownloadRead: value));
+
+  Future<void> setReaderVerticalNav(bool value) =>
+      update((s) => s.copyWith(readerVerticalNav: value));
+
+  Future<void> setMarkDuplicateRead(bool value) =>
+      update((s) => s.copyWith(markDuplicateRead: value));
+
+  Future<void> setColorTheme(ColorTheme value) =>
+      update((s) => s.copyWith(colorTheme: value));
 }
 
 final settingsProvider =

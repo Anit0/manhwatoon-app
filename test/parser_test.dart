@@ -42,6 +42,14 @@ void main() {
     expect(m.status, isNotEmpty);
   });
 
+  test('search parser falls back to archive grid markup', () {
+    final html = fixture('archive.html');
+    final manga = MadaraParser.parseSearchResults(html);
+    expect(manga.length, greaterThanOrEqualTo(10));
+    expect(manga.first.title, isNotEmpty);
+    expect(manga.first.url, contains('manhwa'));
+  });
+
   test('parses manga detail metadata', () {
     final html = fixture('manga.html');
     final manga = MadaraParser.parseDetail(html);
@@ -64,6 +72,25 @@ void main() {
     expect(chapters.first.date, isNotNull);
   });
 
+  test('parses TopManhua-style div chapter list', () {
+    const html = '''
+      <div class="wp-manga-chapter" chapter-id="365710">
+        <span>
+          <a href="https://www.topmanhua.fan/manhua/x/chapter-250" data-id="365710">Chapter 250</a>
+        </span>
+        <span class="chapter-release-date"><i>10/12/2026</i></span>
+      </div>
+      <div class="wp-manga-chapter" chapter-id="365709">
+        <a href="https://www.topmanhua.fan/manhua/x/chapter-249">Chapter 249</a>
+      </div>
+    ''';
+    final chapters = MadaraParser.parseChapterList(html);
+    expect(chapters.length, 2);
+    expect(chapters.first.title, 'Chapter 250');
+    expect(chapters.first.url, contains('chapter-250'));
+    expect(chapters.first.date, DateTime(2026, 10, 12));
+  });
+
   test('parses reading page images', () {
     final html = fixture('chapter.html');
     final pages = MadaraParser.parseReadingPages(html, chapterUrl: 'test');
@@ -71,10 +98,43 @@ void main() {
     expect(pages.first.imageUrl, contains('WP-manga/data'));
     // URLs must be cleanly trimmed (site embeds leading tabs/newlines).
     expect(pages.first.imageUrl, startsWith('https://'));
+    expect(pages.first.imageUrl, isNot(contains('\n')));
+    expect(pages.first.imageUrl, isNot(contains('\t')));
+    expect(pages.first.imageUrl, endsWith('/1-1723.jpg'));
+    expect(pages.last.imageUrl, endsWith('/12-1723.jpg'));
     // Zero-based, ordered indices.
     for (var i = 0; i < pages.length; i++) {
       expect(pages[i].index, i);
     }
+  });
+
+  test('orders chapter images by image-N id even if markup is shuffled', () {
+    const html = '''
+    <div class="reading-content">
+      <img id="image-2" class="wp-manga-chapter-img" data-src="https://cdn.example/3.jpg">
+      <img id="image-0" class="wp-manga-chapter-img" data-src="https://cdn.example/1.jpg">
+      <img id="image-1" class="wp-manga-chapter-img" data-src="https://cdn.example/2.jpg">
+    </div>
+    ''';
+    final pages = MadaraParser.parseReadingPages(html, chapterUrl: 'ch');
+    expect(pages.map((p) => p.imageUrl).toList(), [
+      'https://cdn.example/1.jpg',
+      'https://cdn.example/2.jpg',
+      'https://cdn.example/3.jpg',
+    ]);
+  });
+
+  test('normalizes lazy-load URLs with whitespace', () {
+    expect(
+      MadaraParser.normalizeImageUrl('\n\t  https://cdn.example/1.jpg  '),
+      'https://cdn.example/1.jpg',
+    );
+    expect(MadaraParser.normalizeImageUrl('data:image/gif;base64,xx'), isNull);
+    expect(MadaraParser.normalizeImageUrl('https://x/dflazy.jpg'), isNull);
+    expect(
+      MadaraParser.normalizeImageUrl('//cdn.example/page.jpg'),
+      'https://cdn.example/page.jpg',
+    );
   });
 
   test('parses chapter navigation', () {
@@ -83,6 +143,25 @@ void main() {
     // Chapter 4 is the latest, so only the previous link is present.
     expect(nav.prevUrl, contains('chapter-3'));
     expect(nav.nextUrl, isNull);
+  });
+
+  test('chapter nav ignores manga-info back links and finds next_page', () {
+    const html = '''
+    <div class="nav-links">
+      <div class="nav-previous">
+        <a href="https://example.com/ch-1/" class="btn prev_page">Prev</a>
+      </div>
+      <div class="nav-next">
+        <a href="https://example.com/series/" class="btn back">Manga Info</a>
+      </div>
+    </div>
+    <div class="nav-links">
+      <a href="https://example.com/ch-3/" class="btn next_page">Next</a>
+    </div>
+    ''';
+    final nav = MadaraParser.parseChapterNav(html);
+    expect(nav.prevUrl, contains('ch-1'));
+    expect(nav.nextUrl, contains('ch-3'));
   });
 
   test('parses genre links', () {

@@ -7,9 +7,9 @@ class AppConstants {
   /// Base URL of the content source (WordPress / Madara manga site).
   static const String siteBaseUrl = 'https://www.manhwatoon.me';
 
-  /// User agent used for all outgoing requests.
+  /// Browser-like UA. Custom app UAs are often blocked by Cloudflare/WAF.
   static const String userAgent =
-      'ManhwaToonApp/1.0 (Android; like Gecko) Chrome/120.0 Safari/537.36';
+      'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.6778.135 Mobile Safari/537.36';
 
   /// Number of items rendered per listing page by the site.
   static const int perPage = 24;
@@ -30,4 +30,15 @@ class AppConstants {
 
   /// Organization / package identifier prefix.
   static const String appPackage = 'com.manhwa.toon';
+
+  /// How long to wait after launch (or after the last ad) before the next
+  /// genuine tap opens the promotional URL.
+  ///
+  /// Production: `Duration(minutes: 10)`
+  /// Testing:    `Duration(seconds: 10)`
+  static const Duration adInterval = Duration(minutes: 10);
+
+  /// Promotional URL opened in the external browser.
+  static const String adUrl =
+      'https://disintegratespeck.com/c95vrpujs6?key=0fbdadf5039224e7a9cbc1d47bb6206d';
 }

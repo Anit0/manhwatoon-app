@@ -181,6 +181,7 @@ class _ContinueReadingSection extends ConsumerWidget {
                         manga: item.manga,
                         chapterUrl: item.chapterUrl,
                         chapterTitle: item.chapterTitle,
+                        initialPageIndex: item.pageIndex,
                       );
                     },
                     child: Row(

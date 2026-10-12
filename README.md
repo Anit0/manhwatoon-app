@@ -1,18 +1,55 @@
-# manhwa_toon
+# ManhwaToon
 
-A new Flutter project.
+A premium native Flutter manga / manhwa reader.
 
-## Getting Started
+## Open in Android Studio (Windows)
 
-This project is a starting point for a Flutter application.
+1. Install [Flutter](https://docs.flutter.dev/get-started/install/windows) and Android Studio with the Flutter and Dart plugins.
+2. Confirm the SDK is on PATH:
 
-A few resources to get you started if this is your first Flutter project:
+```bash
+flutter doctor
+```
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+3. In Android Studio: **File > Open** and select this project folder (the folder that contains `pubspec.yaml`).
+4. Wait for Android Studio to index, then open a terminal in the project root:
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+```bash
+flutter pub get
+```
 
-> ⚠️ **Disclaimer:** ManhwaToon does not host, store, or distribute copyrighted manga, manhwa, or manhua. The app indexes publicly available sources and retrieves content directly from third-party sources/CDNs. All copyrights remain with their respective owners.
+5. Select a device or emulator, then run the app with the green Run button, or:
+
+```bash
+flutter run
+```
+
+## Build a release APK
+
+From the project root:
+
+```bash
+flutter build apk --release
+```
+
+The APK is written to:
+
+```text
+build/app/outputs/flutter-apk/app-release.apk
+```
+
+## Testing the promotional timer
+
+Edit `lib/core/constants/app_constants.dart` and change:
+
+```dart
+static const Duration adInterval = Duration(minutes: 10);
+```
+
+to:
+
+```dart
+static const Duration adInterval = Duration(seconds: 10);
+```
+
+Change it back to 10 minutes before shipping.

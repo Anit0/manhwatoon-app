@@ -131,6 +131,14 @@ class ReaderSettingsSheet extends ConsumerWidget {
               value: settings.autoDownloadNext,
               onChanged: (v) => ref.read(settingsProvider.notifier).setAutoDownloadNext(v),
             ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Vertical chapter navigator'),
+              subtitle: const Text('Side slider in webtoon mode'),
+              value: settings.readerVerticalNav,
+              onChanged: (v) =>
+                  ref.read(settingsProvider.notifier).setReaderVerticalNav(v),
+            ),
             const SizedBox(height: 8),
 
             Card(

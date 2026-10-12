@@ -54,10 +54,12 @@ class _AppShellState extends ConsumerState<AppShell> {
     });
 
     final online = ref.watch(connectivityProvider).value ?? true;
+    final incognito = ref.watch(settingsProvider.select((s) => s.incognito));
 
     return Scaffold(
       body: Column(
         children: [
+          if (incognito) const _IncognitoBanner(),
           if (!online) const _OfflineBanner(),
           if (kDebugMode) const _ScraperBanner(),
           Expanded(
@@ -98,6 +100,42 @@ class _AppShellState extends ConsumerState<AppShell> {
             label: 'Library',
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _IncognitoBanner extends ConsumerWidget {
+  const _IncognitoBanner();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.secondaryContainer,
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            children: [
+              Icon(Icons.visibility_off_rounded,
+                  size: 18, color: scheme.onSecondaryContainer),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Incognito is on. History and progress are not saved.',
+                  style: TextStyle(color: scheme.onSecondaryContainer),
+                ),
+              ),
+              TextButton(
+                onPressed: () =>
+                    ref.read(settingsProvider.notifier).setIncognito(false),
+                child: const Text('Turn off'),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

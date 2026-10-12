@@ -33,6 +33,8 @@ class MadaraSource implements MangaSource {
     required this.name,
     required this.baseUrl,
     this.genrePathPrefix = '/manhwa-genre/',
+    this.archivePath = '/manga/',
+    this.imageHosts = const [],
     Dio? dio,
   }) : _dio = dio ?? _defaultDio(baseUrl);
 
@@ -49,6 +51,14 @@ class MadaraSource implements MangaSource {
   /// `/manga-genre/`. Differs between Madara deployments.
   final String genrePathPrefix;
 
+  /// Path prefix used for the manga archive listing, e.g. `/manga/`. Most
+  /// Madara sites use `/manga/`, but some expose the archive at a custom
+  /// post-type path such as `/manhwa/`.
+  final String archivePath;
+
+  @override
+  final List<String> imageHosts;
+
   final Dio _dio;
 
   /// In-memory HTML cache (url -> (timestamp, body)).
@@ -59,8 +69,13 @@ class MadaraSource implements MangaSource {
       baseUrl: baseUrl,
       headers: {
         'User-Agent': AppConstants.userAgent,
+        'Accept':
+            'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.9',
+        'Referer': '$baseUrl/',
       },
+      followRedirects: true,
+      maxRedirects: 5,
       connectTimeout: AppConstants.networkTimeout,
       receiveTimeout: AppConstants.networkTimeout,
       sendTimeout: AppConstants.networkTimeout,
@@ -146,7 +161,7 @@ class MadaraSource implements MangaSource {
   }) async {
     final base = genreSlug != null
         ? '$baseUrl$genrePathPrefix$genreSlug/'
-        : '$baseUrl/manga/';
+        : '$baseUrl${archivePath.startsWith('/') ? archivePath : '/$archivePath'}';
     // The site 301-redirects `page=1` (dropping the param), so only add it
     // for subsequent pages to avoid a wasted round trip.
     final pageParam = page > 1 ? '&page=$page' : '';
@@ -196,16 +211,24 @@ class MadaraSource implements MangaSource {
     String? status,
     SortOrder? order,
   }) async {
-    final uri = Uri.parse('$baseUrl/').replace(queryParameters: {
-      's': query,
+    final params = <String, String>{
+      's': query.trim(),
       'post_type': 'wp-manga',
-      'page': '$page',
       if (genreSlug != null && genreSlug.isNotEmpty) 'm_genre': genreSlug,
       if (status != null && status.isNotEmpty) 'm_status': status.toLowerCase(),
       if (order != null) 'm_orderby': order.query,
-    });
+    };
+    final path = page > 1 ? '$baseUrl/page/$page/' : '$baseUrl/';
+    final uri = Uri.parse(path).replace(queryParameters: params);
     final html = await _getHtml(uri.toString());
-    final result = MadaraParser.parseSearchResults(html);
+    var result = MadaraParser.parseSearchResults(html);
+    if (result.isEmpty && page == 1 && query.trim().isNotEmpty) {
+      final suggestions = await searchSuggestions(query);
+      result = suggestions
+          .where((s) => s.url.isNotEmpty && s.title.isNotEmpty)
+          .map((s) => Manga(url: s.url, title: s.title))
+          .toList();
+    }
     _warnIfEmpty('searchResults', result);
     return result;
   }
@@ -216,18 +239,22 @@ class MadaraSource implements MangaSource {
     final manga = MadaraParser.parseDetail(html);
     if (manga.title.isEmpty) _warnIfEmpty('detail', [manga]);
 
-    // Resolve chapter list.
-    final postId = manga.postId;
-    if (postId != null) {
-      final chapterBody = await _postForm(
-        '${url.endsWith('/') ? url : '$url/'}ajax/chapters/',
-        {'manga_id': '$postId'},
-      );
-      final chapters = MadaraParser.parseChapterList(chapterBody);
-      _warnIfEmpty('chapterList', chapters);
-      return MangaDetailResult(manga: manga, chapters: chapters);
+    // Some Madara forks (e.g. TopManhua) embed the full chapter list on the
+    // detail page as `.wp-manga-chapter` and do not expose `/ajax/chapters/`.
+    var chapters = MadaraParser.parseChapterList(html);
+    if (chapters.isEmpty && manga.postId != null) {
+      try {
+        final chapterBody = await _postForm(
+          '${url.endsWith('/') ? url : '$url/'}ajax/chapters/',
+          {'manga_id': '${manga.postId}'},
+        );
+        chapters = MadaraParser.parseChapterList(chapterBody);
+      } on SiteApiException {
+        chapters = const [];
+      }
     }
-    return MangaDetailResult(manga: manga, chapters: const []);
+    _warnIfEmpty('chapterList', chapters);
+    return MangaDetailResult(manga: manga, chapters: chapters);
   }
 
   @override
@@ -247,7 +274,9 @@ class MadaraSource implements MangaSource {
 
   @override
   Future<List<Genre>> fetchGenres() async {
-    final html = await _getHtml('$baseUrl/manga/');
+    final html = await _getHtml(
+      '$baseUrl${archivePath.startsWith('/') ? archivePath : '/$archivePath'}',
+    );
     return MadaraParser.parseGenres(html, genrePath: genrePathPrefix);
   }
 
@@ -258,7 +287,11 @@ class MadaraSource implements MangaSource {
           url,
           options: Options(
             responseType: ResponseType.bytes,
-            headers: {'Referer': '$baseUrl/'},
+            headers: {
+              'Referer': '$baseUrl/',
+              'referer': '$baseUrl/',
+              'User-Agent': AppConstants.userAgent,
+            },
           ),
         )
         .timeout(const Duration(seconds: 30));

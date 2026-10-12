@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -10,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/network/update_checker.dart';
 import '../../core/providers/app_providers.dart';
+import '../../core/providers/extras_provider.dart';
 import '../../core/providers/settings_provider.dart';
 import '../../core/sources/source_registry.dart';
 import '../../core/theme/app_theme.dart';
@@ -41,7 +43,6 @@ class SettingsScreen extends ConsumerWidget {
                 }
               },
               title: Text(source.name),
-              subtitle: Text(source.baseUrl),
               secondary: Icon(
                 selected ? Icons.menu_book_rounded : Icons.public_rounded,
               ),
@@ -95,6 +96,27 @@ class SettingsScreen extends ConsumerWidget {
             value: settings.hideAdult,
             onChanged: (v) => ref.read(settingsProvider.notifier).setHideAdult(v),
           ),
+          ListTile(
+            leading: const Icon(Icons.colorize_rounded),
+            title: const Text('Color theme'),
+            subtitle: Text(settings.colorTheme.label),
+            onTap: () => _pickColorTheme(context, ref, settings),
+          ),
+          SwitchListTile(
+            secondary: const Icon(Icons.visibility_off_outlined),
+            title: const Text('Incognito mode'),
+            subtitle: const Text('Do not save history or reading progress'),
+            value: settings.incognito,
+            onChanged: (v) => ref.read(settingsProvider.notifier).setIncognito(v),
+          ),
+          SwitchListTile(
+            secondary: const Icon(Icons.offline_pin_rounded),
+            title: const Text('Downloaded only'),
+            subtitle: const Text('Hide series without offline chapters'),
+            value: settings.downloadedOnly,
+            onChanged: (v) =>
+                ref.read(settingsProvider.notifier).setDownloadedOnly(v),
+          ),
 
           const Divider(height: 24),
           _Header('Reader'),
@@ -116,6 +138,35 @@ class SettingsScreen extends ConsumerWidget {
             title: const Text('Auto-download next chapter'),
             value: settings.autoDownloadNext,
             onChanged: (v) => ref.read(settingsProvider.notifier).setAutoDownloadNext(v),
+          ),
+          SwitchListTile(
+            secondary: const Icon(Icons.swipe_vertical_rounded),
+            title: const Text('Vertical chapter navigator'),
+            subtitle: const Text('Show a side slider in webtoon mode'),
+            value: settings.readerVerticalNav,
+            onChanged: (v) =>
+                ref.read(settingsProvider.notifier).setReaderVerticalNav(v),
+          ),
+          SwitchListTile(
+            secondary: const Icon(Icons.skip_next_rounded),
+            title: const Text('Skip downloading read chapters'),
+            value: settings.skipDownloadRead,
+            onChanged: (v) =>
+                ref.read(settingsProvider.notifier).setSkipDownloadRead(v),
+          ),
+          SwitchListTile(
+            secondary: const Icon(Icons.done_all_rounded),
+            title: const Text('Mark duplicate chapters as read'),
+            value: settings.markDuplicateRead,
+            onChanged: (v) =>
+                ref.read(settingsProvider.notifier).setMarkDuplicateRead(v),
+          ),
+          SwitchListTile(
+            secondary: const Icon(Icons.notifications_active_outlined),
+            title: const Text('Unread chapter badge'),
+            value: settings.showUnreadBadge,
+            onChanged: (v) =>
+                ref.read(settingsProvider.notifier).setShowUnreadBadge(v),
           ),
 
           const Divider(height: 24),
@@ -199,7 +250,7 @@ class SettingsScreen extends ConsumerWidget {
           const ListTile(
             leading: Icon(Icons.info_outline_rounded),
             title: Text('ManhwaToon'),
-            subtitle: Text('v1.0.3 • A premium manga reader'),
+            subtitle: Text('v1.0.7 • A premium manga reader'),
           ),
           ListTile(
             leading: const Icon(Icons.copyright_rounded),
@@ -294,6 +345,33 @@ class SettingsScreen extends ConsumerWidget {
             child: const Text('Download'),
           ),
         ],
+      ),
+    );
+  }
+
+  void _pickColorTheme(
+      BuildContext context, WidgetRef ref, AppSettings settings) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final theme in ColorTheme.values)
+              RadioListTile<ColorTheme>(
+                value: theme,
+                groupValue: settings.colorTheme,
+                title: Text(theme.label),
+                onChanged: (v) {
+                  if (v != null) {
+                    ref.read(settingsProvider.notifier).setColorTheme(v);
+                  }
+                  Navigator.pop(ctx);
+                },
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -421,7 +499,9 @@ class SettingsScreen extends ConsumerWidget {
       const SnackBar(content: Text('Exporting library...')),
     );
     try {
-      final json = await ref.read(repositoryProvider).exportLibraryJson();
+      final json = await ref.read(repositoryProvider).exportLibraryJson(
+            extras: ref.read(extrasProvider).toJson(),
+          );
       final dir = await _backupDir();
       final now = DateTime.now();
       final stamp = '${now.year}${now.month.toString().padLeft(2, '0')}'
@@ -504,6 +584,12 @@ class SettingsScreen extends ConsumerWidget {
     try {
       final json = await selected.readAsString();
       final result = await ref.read(repositoryProvider).importLibraryJson(json);
+      try {
+        final decoded = jsonDecode(json);
+        if (decoded is Map) {
+          await ref.read(extrasProvider.notifier).mergeFromJson(decoded['extras']);
+        }
+      } catch (_) {}
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

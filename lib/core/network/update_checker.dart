@@ -30,6 +30,10 @@ class UpdateChecker {
 
   static const String repo = 'Anit0/manhwatoon-app';
 
+  /// Where the "Download" button sends users to see the update.
+  static const String releaseUrl =
+      'https://github.com/$repo/releases/tag/manhwatoon-app';
+
   final Dio _dio;
 
   /// Returns the latest release if it is newer than the running version,
@@ -49,8 +53,7 @@ class UpdateChecker {
       return AppUpdate(
         version: latest,
         notes: data['body']?.toString(),
-        url: data['html_url']?.toString() ??
-            'https://github.com/$repo/releases/latest',
+        url: releaseUrl,
         publishedAt: DateTime.tryParse(data['published_at']?.toString() ?? ''),
       );
     } catch (_) {

@@ -26,11 +26,14 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   String _query = '';
   bool _typing = false;
   List<SearchSuggestion> _suggestions = const [];
+  bool _loadingSuggestions = false;
+  int _suggestionGen = 0;
   bool _submitted = false;
   bool _loadingResults = false;
   List<Manga> _results = [];
   int _page = 0;
   bool _hasMore = true;
+  int _searchGen = 0;
   Object? _error;
   final ScrollController _scrollController = ScrollController();
 
@@ -53,28 +56,47 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     super.dispose();
   }
 
+  bool get _hasActiveFilters =>
+      _genreFilter != null || _statusFilter != null || _orderFilter != null;
+
   void _onQueryChanged(String text) {
+    final term = text.trim();
     setState(() {
-      _query = text.trim();
-      _typing = _query.isNotEmpty;
+      _query = term;
+      _typing = term.isNotEmpty;
       _submitted = false;
+      if (term.isEmpty) {
+        _suggestions = const [];
+        _loadingSuggestions = false;
+      }
     });
     _debounce?.cancel();
-    if (_query.isEmpty) {
-      setState(() => _suggestions = const []);
-      return;
-    }
+    if (term.isEmpty) return;
+    final gen = ++_suggestionGen;
     _debounce = Timer(const Duration(milliseconds: 250), () async {
-      final api = ref.read(activeSourceProvider);
-      final suggestions = await api.searchSuggestions(_query);
-      if (!mounted) return;
-      setState(() => _suggestions = suggestions);
+      if (!mounted || gen != _suggestionGen) return;
+      setState(() => _loadingSuggestions = true);
+      try {
+        final api = ref.read(activeSourceProvider);
+        final suggestions = await api.searchSuggestions(term);
+        if (!mounted || gen != _suggestionGen) return;
+        setState(() {
+          _suggestions = suggestions;
+          _loadingSuggestions = false;
+        });
+      } catch (_) {
+        if (!mounted || gen != _suggestionGen) return;
+        setState(() {
+          _suggestions = const [];
+          _loadingSuggestions = false;
+        });
+      }
     });
   }
 
   Future<void> _submit(String query) async {
     final term = query.trim();
-    if (term.isEmpty) return;
+    if (term.isEmpty && !_hasActiveFilters) return;
     _controller.text = term;
     _controller.selection = TextSelection.collapsed(offset: term.length);
     _focusNode.unfocus();
@@ -86,40 +108,60 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       _results = [];
       _hasMore = true;
       _error = null;
-      _loadingResults = true;
     });
-    await ref.read(repositoryProvider).addSearchTerm(term);
+    if (term.isNotEmpty) {
+      await ref.read(repositoryProvider).addSearchTerm(term);
+    }
     await _search(term, reset: true);
   }
 
   Future<void> _search(String term, {required bool reset}) async {
-    if (_loadingResults) return;
-    if (!reset && !_hasMore) return;
+    if (!reset && (_loadingResults || !_hasMore)) return;
+    final gen = ++_searchGen;
     setState(() {
-      if (reset) _results = [];
+      if (reset) {
+        _results = [];
+        _error = null;
+        _hasMore = true;
+      }
       _loadingResults = true;
     });
     try {
       final api = ref.read(activeSourceProvider);
       final page = reset ? 1 : _page + 1;
-      final results = await api.search(
-        term,
-        page: page,
-        genreSlug: _genreFilter?.slug,
-        status: _statusFilter,
-        order: _orderFilter,
-      );
+      final List<Manga> results;
+      if (term.isEmpty) {
+        results = await api.fetchArchive(
+          _orderFilter ?? SortOrder.latest,
+          page: page,
+          genreSlug: _genreFilter?.slug,
+        );
+      } else {
+        results = await api.search(
+          term,
+          page: page,
+          genreSlug: _genreFilter?.slug,
+          status: _statusFilter,
+          order: _orderFilter,
+        );
+      }
       final hideAdult = ref.read(settingsProvider).hideAdult;
-      final filtered = hideAdult ? results.where((m) => !m.isAdult).toList() : results;
-      if (!mounted) return;
+      final filtered =
+          hideAdult ? results.where((m) => !m.isAdult).toList() : results;
+      if (!mounted || gen != _searchGen) return;
       setState(() {
-        _results.addAll(filtered);
+        if (reset) {
+          _results = filtered;
+        } else {
+          _results.addAll(filtered);
+        }
         _hasMore = results.isNotEmpty;
         _page = page;
         _loadingResults = false;
+        _error = null;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || gen != _searchGen) return;
       setState(() {
         _error = e;
         _loadingResults = false;
@@ -261,8 +303,15 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   }
 
   Widget _buildSuggestions() {
+    if (_loadingSuggestions && _suggestions.isEmpty) {
+      return const Center(child: CircularProgressIndicator(strokeWidth: 2.5));
+    }
     if (_suggestions.isEmpty) {
-      return const Center(child: Text('Type to search'));
+      return EmptyState(
+        icon: Icons.search_off_rounded,
+        title: 'No suggestions',
+        message: 'Press search to look up "$_query".',
+      );
     }
     return ListView.separated(
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
@@ -289,7 +338,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       return EmptyState(
         icon: Icons.cloud_off_rounded,
         title: 'Search failed',
-        message: '$_error',
+        message: 'Could not load results. Check your connection and try again.',
         actionLabel: 'Retry',
         onAction: () => _search(_query, reset: true),
       );

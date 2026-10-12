@@ -51,6 +51,12 @@ class MadaraParser {
       final manga = _mangaFromSearchElement(el);
       if (manga != null) result.add(manga);
     }
+    if (result.isEmpty) {
+      for (final el in doc.querySelectorAll('.page-item-detail')) {
+        final manga = _mangaFromDetailElement(el);
+        if (manga != null) result.add(manga);
+      }
+    }
     return result;
   }
 
@@ -105,10 +111,16 @@ class MadaraParser {
   }
 
   static Manga? _mangaFromSearchElement(Element el) {
-    final link = el.querySelector('.tab-thumb a, .post-title a');
-    final url = link?.attributes['href'];
+    final thumbLink = el.querySelector('.tab-thumb a');
+    final titleLink = el.querySelector('.post-title a');
+    final link = titleLink ?? thumbLink;
+    final url = link?.attributes['href'] ?? thumbLink?.attributes['href'];
     if (link == null || url == null) return null;
-    final title = _cleanText(link.text) ?? link.attributes['title'] ?? '';
+    final title = _cleanText(titleLink?.text) ??
+        titleLink?.attributes['title'] ??
+        thumbLink?.attributes['title'] ??
+        _cleanText(link.text) ??
+        '';
     final img = el.querySelector('.tab-thumb img');
     final rating = _parseRating(el.querySelector('.post-total-rating .score'));
 
@@ -212,16 +224,18 @@ class MadaraParser {
   static List<Chapter> parseChapterList(String html) {
     final doc = html_parser.parse(html);
     final result = <Chapter>[];
-    for (final li in doc.querySelectorAll('li.wp-manga-chapter')) {
-      final link = li.querySelector('a');
-      final url = link?.attributes['href'];
-      if (url == null) continue;
+    for (final li in doc.querySelectorAll('.wp-manga-chapter')) {
+      final link = li.querySelector('a[href]');
+      var url = link?.attributes['href']?.trim();
+      if (url == null || url.isEmpty) continue;
       final title = _cleanText(link?.text);
-      final dateAttr = li.querySelector('.chapter-release-date a')?.attributes['title'];
+      final dateAttr =
+          li.querySelector('.chapter-release-date a')?.attributes['title'];
+      final dateText = _cleanText(li.querySelector('.chapter-release-date')?.text);
       result.add(Chapter(
         url: url,
         title: title ?? '',
-        date: parseRelativeTime(dateAttr),
+        date: parseRelativeTime(dateAttr) ?? _parseSlashDate(dateText),
       ));
     }
     return result;
@@ -231,17 +245,66 @@ class MadaraParser {
   static List<MangaPage> parseReadingPages(String html, {required String chapterUrl}) {
     final doc = html_parser.parse(html);
     final reader = doc.querySelector('#readerarea, .reading-content');
-    final images = reader?.querySelectorAll('img') ?? [];
-    final result = <MangaPage>[];
+    if (reader == null) return const [];
+    final chapterImgs = reader.querySelectorAll('img.wp-manga-chapter-img');
+    final images =
+        chapterImgs.isNotEmpty ? chapterImgs : reader.querySelectorAll('img');
+    final parsed = <({int? idNum, String url})>[];
     for (var i = 0; i < images.length; i++) {
       final img = images[i];
-      final src = (img.attributes['data-src'] ?? img.attributes['src'] ?? '')
-          .trim();
-      if (src.isEmpty || src.contains('dflazy') || src.contains('1x1')) continue;
-      result.add(MangaPage(index: result.length, imageUrl: src, chapterUrl: chapterUrl));
+      final src = _pageImageUrl(img);
+      if (src == null) continue;
+      final idMatch = RegExp(r'image-(\d+)').firstMatch(img.id);
+      parsed.add((
+        idNum: idMatch != null ? int.tryParse(idMatch.group(1)!) : null,
+        url: src,
+      ));
     }
-    // Keep stable numbering even if lazy-placeholders are interleaved.
-    return result;
+    final hasIds = parsed.every((p) => p.idNum != null);
+    if (hasIds) {
+      parsed.sort((a, b) => a.idNum!.compareTo(b.idNum!));
+    }
+    return [
+      for (var i = 0; i < parsed.length; i++)
+        MangaPage(index: i, imageUrl: parsed[i].url, chapterUrl: chapterUrl),
+    ];
+  }
+
+  static String? _pageImageUrl(Element img) {
+    const attrs = [
+      'data-src',
+      'data-lazy-src',
+      'data-cfsrc',
+      'data-original',
+      'src',
+    ];
+    for (final attr in attrs) {
+      final src = normalizeImageUrl(img.attributes[attr]);
+      if (src != null) return src;
+    }
+    final srcset =
+        img.attributes['data-srcset'] ?? img.attributes['srcset'] ?? '';
+    for (final part in srcset.split(',')) {
+      final token = part.trim().split(RegExp(r'\s+')).first;
+      final src = normalizeImageUrl(token);
+      if (src != null) return src;
+    }
+    return null;
+  }
+
+  /// Strips whitespace/newlines Madara embeds in lazy-load URLs.
+  static String? normalizeImageUrl(String? raw) {
+    if (raw == null) return null;
+    var src = raw.replaceAll(RegExp(r'\s+'), '').trim();
+    if (src.isEmpty) return null;
+    if (src.startsWith('data:')) return null;
+    if (src.contains('dflazy')) return null;
+    if (src.contains('1x1.gif') || src.contains('1x1.png') || src.endsWith('/1x1')) {
+      return null;
+    }
+    if (src.startsWith('//')) src = 'https:$src';
+    if (!(src.startsWith('http://') || src.startsWith('https://'))) return null;
+    return src;
   }
 
   /// Parses next/previous chapter links from a reader page.
@@ -249,16 +312,29 @@ class MadaraParser {
     final doc = html_parser.parse(html);
     String? prevUrl;
     String? nextUrl;
-    for (final el in doc.querySelectorAll('.nav-previous a, .nav-next a')) {
+    for (final el in doc.querySelectorAll(
+        '.nav-previous a, a.prev_page, a.btn.prev_page')) {
       final href = el.attributes['href'];
-      if (href == null || href.isEmpty) continue;
-      if (el.className.contains('prev')) {
-        prevUrl = href;
-      } else if (el.className.contains('next')) {
-        nextUrl = href;
-      }
+      if (href == null || href.isEmpty || _isMangaInfoLink(el)) continue;
+      prevUrl = href;
+      break;
+    }
+    for (final el in doc.querySelectorAll(
+        '.nav-next a, a.next_page, a.btn.next_page')) {
+      final href = el.attributes['href'];
+      if (href == null || href.isEmpty || _isMangaInfoLink(el)) continue;
+      nextUrl = href;
+      break;
     }
     return (prevUrl: prevUrl, nextUrl: nextUrl);
+  }
+
+  static bool _isMangaInfoLink(Element el) {
+    final cls = el.className.toLowerCase();
+    final text = el.text.toLowerCase();
+    if (cls.contains('back')) return true;
+    if (text.contains('manga info')) return true;
+    return false;
   }
 
   /// Extracts genre links (slug, name) from a page containing genre menus.
@@ -294,10 +370,12 @@ class MadaraParser {
 
   static String? _imageUrl(Element? img) {
     if (img == null) return null;
+    final parsed = _pageImageUrl(img);
+    if (parsed != null) return parsed;
     final src =
         (img.attributes['data-src'] ?? img.attributes['src'] ?? '').trim();
     if (src.isEmpty || src.contains('dflazy')) return null;
-    return src;
+    return src.replaceAll(RegExp(r'\s+'), '');
   }
 
   static double? _parseRating(Element? el) {
@@ -331,6 +409,19 @@ class MadaraParser {
     if (raw == null) return null;
     final cleaned = raw.replaceAll(RegExp(r'\s+'), ' ').trim();
     return cleaned.isEmpty ? null : cleaned;
+  }
+
+  static DateTime? _parseSlashDate(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    final match = RegExp(r'^(\d{1,2})/(\d{1,2})/(\d{4})$').firstMatch(raw.trim());
+    if (match == null) return null;
+    final month = int.tryParse(match.group(1)!);
+    final day = int.tryParse(match.group(2)!);
+    final year = int.tryParse(match.group(3)!);
+    if (month == null || day == null || year == null) return null;
+    return DateTime.tryParse(
+      '$year-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}',
+    );
   }
 
   static DateTime? _parseAbsoluteDate(String? raw) {
