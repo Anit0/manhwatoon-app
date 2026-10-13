@@ -34,6 +34,9 @@ class MadaraSource implements MangaSource {
     required this.baseUrl,
     this.genrePathPrefix = '/manhwa-genre/',
     this.archivePath = '/manga/',
+    this.seriesPathPrefix,
+    this.liveSearchPath,
+    this.coverCdn,
     this.imageHosts = const [],
     Dio? dio,
   }) : _dio = dio ?? _defaultDio(baseUrl);
@@ -56,8 +59,29 @@ class MadaraSource implements MangaSource {
   /// post-type path such as `/manhwa/`.
   final String archivePath;
 
+  /// Path prefix for series pages. Defaults to [archivePath]. TopManhua lists
+  /// the archive at `/manga/` but series live under `/manhua/`.
+  final String? seriesPathPrefix;
+
+  /// Alternate live-search endpoint (GET) used by forks that do not expose
+  /// WordPress `admin-ajax.php`, e.g. TopManhua's `/manga/searching`.
+  final String? liveSearchPath;
+
+  /// Origin used to turn relative cover paths from [liveSearchPath] into
+  /// absolute image URLs.
+  final String? coverCdn;
+
   @override
   final List<String> imageHosts;
+
+  String get _seriesPrefix {
+    final raw = seriesPathPrefix ?? archivePath;
+    var value = raw.trim();
+    if (value.isEmpty) return '/manga/';
+    if (!value.startsWith('/')) value = '/$value';
+    if (!value.endsWith('/')) value = '$value/';
+    return value;
+  }
 
   final Dio _dio;
 
@@ -101,6 +125,32 @@ class MadaraSource implements MangaSource {
       final body = response.data ?? '';
       _htmlCache[url] = (at: DateTime.now(), body: body);
       return body;
+    } on DioException catch (e) {
+      throw SiteApiException(
+        'Failed to load ${_shortUrl(url)}: ${e.message ?? 'network error'}',
+        statusCode: e.response?.statusCode,
+      );
+    } on TimeoutException {
+      throw SiteApiException('Timed out loading ${_shortUrl(url)}');
+    }
+  }
+
+  Future<dynamic> _getJson(String url) async {
+    try {
+      final response = await _dio
+          .get<dynamic>(
+            url,
+            options: Options(
+              responseType: ResponseType.json,
+              headers: {
+                'Accept': 'application/json, text/javascript, */*;q=0.1',
+              },
+            ),
+          )
+          .timeout(AppConstants.networkTimeout);
+      final data = response.data;
+      if (data is String) return _jsonDecode(data);
+      return data;
     } on DioException catch (e) {
       throw SiteApiException(
         'Failed to load ${_shortUrl(url)}: ${e.message ?? 'network error'}',
@@ -175,29 +225,27 @@ class MadaraSource implements MangaSource {
   @override
   Future<List<SearchSuggestion>> searchSuggestions(String query) async {
     if (query.trim().isEmpty) return const [];
-    final body = await _postForm(
-      '$baseUrl/wp-admin/admin-ajax.php',
-      {
-        'action': 'wp-manga-search-manga',
-        'title': query.trim(),
-      },
-    );
-    try {
-      final decoded = _jsonDecode(body);
-      if (decoded is! Map || decoded['success'] != true) return const [];
-      final data = decoded['data'];
-      if (data is! List) return const [];
-      return data
-          .map((e) {
-            if (e is! Map) return null;
-            return SearchSuggestion(
-              title: e['title']?.toString() ?? '',
-              url: e['url']?.toString() ?? '',
-              type: e['type']?.toString(),
-            );
-          })
-          .whereType<SearchSuggestion>()
+    final livePath = liveSearchPath;
+    if (livePath != null && livePath.isNotEmpty) {
+      final live = await _liveSearch(query);
+      return (live ?? const [])
+          .map((m) => SearchSuggestion(title: m.title, url: m.url, type: 'manga'))
           .toList();
+    }
+    try {
+      final body = await _postForm(
+        '$baseUrl/wp-admin/admin-ajax.php',
+        {
+          'action': 'wp-manga-search-manga',
+          'title': query.trim(),
+        },
+      );
+      final decoded = _jsonDecode(body);
+      return MadaraParser.parseSearchSuggestionApi(
+        decoded,
+        baseUrl: baseUrl,
+        seriesPathPrefix: _seriesPrefix,
+      );
     } catch (_) {
       return const [];
     }
@@ -211,8 +259,9 @@ class MadaraSource implements MangaSource {
     String? status,
     SortOrder? order,
   }) async {
+    final term = query.trim();
     final params = <String, String>{
-      's': query.trim(),
+      's': term,
       'post_type': 'wp-manga',
       if (genreSlug != null && genreSlug.isNotEmpty) 'm_genre': genreSlug,
       if (status != null && status.isNotEmpty) 'm_status': status.toLowerCase(),
@@ -220,17 +269,50 @@ class MadaraSource implements MangaSource {
     };
     final path = page > 1 ? '$baseUrl/page/$page/' : '$baseUrl/';
     final uri = Uri.parse(path).replace(queryParameters: params);
-    final html = await _getHtml(uri.toString());
-    var result = MadaraParser.parseSearchResults(html);
-    if (result.isEmpty && page == 1 && query.trim().isNotEmpty) {
-      final suggestions = await searchSuggestions(query);
-      result = suggestions
-          .where((s) => s.url.isNotEmpty && s.title.isNotEmpty)
-          .map((s) => Manga(url: s.url, title: s.title))
-          .toList();
+    List<Manga> result = const [];
+    SiteApiException? htmlError;
+    try {
+      final html = await _getHtml(uri.toString());
+      result = MadaraParser.parseSearchResults(html);
+    } on SiteApiException catch (e) {
+      htmlError = e;
+    }
+    if (result.isEmpty && page == 1 && term.isNotEmpty) {
+      final live = await _liveSearch(term);
+      if (live != null && live.isNotEmpty) {
+        result = live;
+      } else if (htmlError != null && live == null) {
+        throw htmlError;
+      }
     }
     _warnIfEmpty('searchResults', result);
     return result;
+  }
+
+  /// Hits the source-specific live-search API when [liveSearchPath] is set.
+  /// Returns `null` when the endpoint is unused or unavailable so callers can
+  /// fall back to WordPress search.
+  Future<List<Manga>?> _liveSearch(String query) async {
+    final path = liveSearchPath;
+    if (path == null || path.isEmpty) return null;
+    final uri = Uri.parse('$baseUrl$path').replace(
+      queryParameters: {'title': query.trim()},
+    );
+    try {
+      final decoded = await _getJson(uri.toString());
+      if (decoded is! Map || decoded['success'] != true) return const [];
+      return MadaraParser.parseSearchApi(
+        decoded,
+        baseUrl: baseUrl,
+        seriesPathPrefix: _seriesPrefix,
+        coverCdn: coverCdn ??
+            (imageHosts.isNotEmpty ? 'https://${imageHosts.first}' : null),
+      );
+    } on SiteApiException {
+      return null;
+    } catch (_) {
+      return null;
+    }
   }
 
   @override

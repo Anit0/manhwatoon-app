@@ -9,6 +9,9 @@ final MadaraSource topManhuaSource = MadaraSource(
   baseUrl: 'https://www.topmanhua.fan',
   genrePathPrefix: '/manhua-genre/',
   archivePath: '/manga/',
+  seriesPathPrefix: '/manhua/',
+  liveSearchPath: '/manga/searching',
+  coverCdn: 'https://img-r1.2xstorage.com',
   imageHosts: ['cdn.zinmanga1.com', 'img-r1.2xstorage.com'],
 );
 

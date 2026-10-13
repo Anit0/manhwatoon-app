@@ -250,7 +250,7 @@ class SettingsScreen extends ConsumerWidget {
           const ListTile(
             leading: Icon(Icons.info_outline_rounded),
             title: Text('ManhwaToon'),
-            subtitle: Text('v1.0.7 • A premium manga reader'),
+            subtitle: Text('v1.0.7+1 • A premium manga reader'),
           ),
           ListTile(
             leading: const Icon(Icons.copyright_rounded),

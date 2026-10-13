@@ -50,6 +50,9 @@ void main() {
     expect(source, isA<MadaraSource>());
     expect((source as MadaraSource).archivePath, '/manga/');
     expect(source.genrePathPrefix, '/manhua-genre/');
+    expect(source.seriesPathPrefix, '/manhua/');
+    expect(source.liveSearchPath, '/manga/searching');
+    expect(source.coverCdn, 'https://img-r1.2xstorage.com');
     expect(source.baseUrl, 'https://www.topmanhua.fan');
     expect(
       source.imageHosts,

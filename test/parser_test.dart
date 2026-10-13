@@ -42,6 +42,102 @@ void main() {
     expect(m.status, isNotEmpty);
   });
 
+  test('parses classic Madara wp-manga-search-manga json', () {
+    final decoded = {
+      'success': true,
+      'data': [
+        {
+          'title': 'Solo Bug Player',
+          'url': 'https://www.manhwatoon.me/manhwa/solo-bug-player/',
+          'type': 'manga',
+        },
+      ],
+    };
+    final manga = MadaraParser.parseSearchApi(
+      decoded,
+      baseUrl: 'https://www.manhwatoon.me',
+      seriesPathPrefix: '/manhwa/',
+    );
+    expect(manga, hasLength(1));
+    expect(manga.first.title, 'Solo Bug Player');
+    expect(manga.first.url, contains('solo-bug-player'));
+
+    final suggestions = MadaraParser.parseSearchSuggestionApi(
+      decoded,
+      baseUrl: 'https://www.manhwatoon.me',
+      seriesPathPrefix: '/manhwa/',
+    );
+    expect(suggestions, hasLength(1));
+    expect(suggestions.first.title, 'Solo Bug Player');
+    expect(suggestions.first.url, contains('solo-bug-player'));
+  });
+
+  test('parses TopManhua live-search json with name and slug', () {
+    final decoded = {
+      'success': true,
+      'data': [
+        {
+          'comic_id': 57850,
+          'name': 'Emperor of Solo Play',
+          'other_name': '',
+          'image_original': 'thumb/emperor-of-solo-play.webp',
+          'slug': 'emperor-of-solo-play',
+          'author': 'Dedart, ISHIGAMI',
+          'status': 'Ongoing',
+          'kind': 'Action,Comedy,Drama',
+          'rating_value': 3.7,
+          'real_view': 15111,
+          'release_year': '2026',
+          'detail': 'Betrayed by his guild.<br>Now he is back.',
+          'chapter_latest':
+              '[{"chapter_id": 91, "chapter_name": "Chapter 88", "chapter_slug": "chapter-88", "updated_at": "2026-10-12 06:17:02"}]',
+        },
+      ],
+    };
+    final manga = MadaraParser.parseSearchApi(
+      decoded,
+      baseUrl: 'https://www.topmanhua.fan',
+      seriesPathPrefix: '/manhua/',
+      coverCdn: 'https://img-r1.2xstorage.com',
+    );
+    expect(manga, hasLength(1));
+    final m = manga.first;
+    expect(m.title, 'Emperor of Solo Play');
+    expect(m.url, 'https://www.topmanhua.fan/manhua/emperor-of-solo-play');
+    expect(
+      m.coverUrl,
+      'https://img-r1.2xstorage.com/thumb/emperor-of-solo-play.webp',
+    );
+    expect(m.rating, 3.7);
+    expect(m.status, 'Ongoing');
+    expect(m.genres, containsAll(['Action', 'Comedy', 'Drama']));
+    expect(m.authors, contains('Dedart'));
+    expect(m.latestChapterTitle, 'Chapter 88');
+    expect(
+      m.latestChapterUrl,
+      'https://www.topmanhua.fan/manhua/emperor-of-solo-play/chapter-88',
+    );
+    expect(m.postId, 57850);
+    expect(m.summary, contains('Betrayed by his guild'));
+  });
+
+  test('live-search json without success or with empty data is empty', () {
+    expect(
+      MadaraParser.parseSearchApi(
+        {'success': false, 'data': 'No manga found'},
+        baseUrl: 'https://www.topmanhua.fan',
+      ),
+      isEmpty,
+    );
+    expect(
+      MadaraParser.parseSearchApi(
+        {'success': true, 'data': []},
+        baseUrl: 'https://www.topmanhua.fan',
+      ),
+      isEmpty,
+    );
+  });
+
   test('search parser falls back to archive grid markup', () {
     final html = fixture('archive.html');
     final manga = MadaraParser.parseSearchResults(html);

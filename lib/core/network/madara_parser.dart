@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:html/dom.dart';
 import 'package:html/parser.dart' as html_parser;
 
@@ -58,6 +60,173 @@ class MadaraParser {
       }
     }
     return result;
+  }
+
+  /// Parses live-search JSON from Madara `wp-manga-search-manga` or
+  /// TopManhua-style `GET /manga/searching` (`name` + `slug` items).
+  static List<Manga> parseSearchApi(
+    dynamic decoded, {
+    required String baseUrl,
+    String seriesPathPrefix = '/manga/',
+    String? coverCdn,
+  }) {
+    if (decoded is! Map) return const [];
+    if (decoded.containsKey('success') && decoded['success'] != true) {
+      return const [];
+    }
+    final data = decoded['data'];
+    if (data is! List) return const [];
+    final prefix = _normalizedPrefix(seriesPathPrefix);
+    final result = <Manga>[];
+    for (final item in data) {
+      if (item is! Map) continue;
+      final manga = _mangaFromSearchApiItem(
+        item,
+        baseUrl: baseUrl,
+        seriesPathPrefix: prefix,
+        coverCdn: coverCdn,
+      );
+      if (manga != null) result.add(manga);
+    }
+    return result;
+  }
+
+  static List<SearchSuggestion> parseSearchSuggestionApi(
+    dynamic decoded, {
+    required String baseUrl,
+    String seriesPathPrefix = '/manga/',
+  }) {
+    return parseSearchApi(
+      decoded,
+      baseUrl: baseUrl,
+      seriesPathPrefix: seriesPathPrefix,
+    )
+        .map((m) => SearchSuggestion(title: m.title, url: m.url, type: 'manga'))
+        .toList();
+  }
+
+  static Manga? _mangaFromSearchApiItem(
+    Map item, {
+    required String baseUrl,
+    required String seriesPathPrefix,
+    String? coverCdn,
+  }) {
+    final title = _cleanText(item['title']?.toString()) ??
+        _cleanText(item['name']?.toString()) ??
+        '';
+    var url = item['url']?.toString().trim() ?? '';
+    final slug = item['slug']?.toString().trim();
+    if (url.isEmpty && slug != null && slug.isNotEmpty) {
+      url = _joinUrl(baseUrl, '$seriesPathPrefix$slug');
+    }
+    if (title.isEmpty || url.isEmpty) return null;
+
+    final cover = _coverFromSearchApi(item, coverCdn);
+    final rating = _asDouble(item['rating_value'] ?? item['rating']);
+    final status = _cleanText(item['status']?.toString());
+    final genres = _splitList(item['kind']?.toString() ?? item['genres']?.toString());
+    final authors = _splitList(item['author']?.toString());
+    final artists = _splitList(item['artist']?.toString());
+    final alt = _splitList(item['other_name']?.toString());
+    final views = _asInt(item['real_view'] ?? item['view']);
+    final postId = _asInt(item['comic_id'] ?? item['id'] ?? item['post_id']);
+    final release = _cleanText(item['release_year']?.toString());
+    final summary = _cleanText(_stripHtml(item['detail']?.toString()));
+
+    String? latestTitle;
+    String? latestUrl;
+    DateTime? latestTime;
+    final latest = _firstLatestChapter(item['chapter_latest']);
+    if (latest != null) {
+      latestTitle = _cleanText(latest['chapter_name']?.toString());
+      final chapterSlug = latest['chapter_slug']?.toString().trim();
+      if (chapterSlug != null && chapterSlug.isNotEmpty && slug != null) {
+        latestUrl = _joinUrl(baseUrl, '$seriesPathPrefix$slug/$chapterSlug');
+      }
+      latestTime = DateTime.tryParse(latest['updated_at']?.toString() ?? '');
+    }
+
+    return Manga(
+      url: url,
+      title: title,
+      coverUrl: cover,
+      rating: rating,
+      latestChapterTitle: latestTitle,
+      latestChapterUrl: latestUrl,
+      latestChapterTime: latestTime,
+      status: status,
+      genres: genres,
+      releaseYear: release,
+      authors: authors,
+      artists: artists,
+      alternativeNames: alt,
+      summary: summary,
+      views: views,
+      postId: postId,
+    );
+  }
+
+  static String? _coverFromSearchApi(Map item, String? coverCdn) {
+    final raw = (item['image_original'] ??
+            item['cover'] ??
+            item['thumbnail'] ??
+            item['image'])
+        ?.toString()
+        .trim();
+    if (raw == null || raw.isEmpty) return null;
+    if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
+    if (coverCdn == null || coverCdn.isEmpty) return null;
+    final cdn = coverCdn.endsWith('/')
+        ? coverCdn.substring(0, coverCdn.length - 1)
+        : coverCdn;
+    final path = raw.startsWith('/') ? raw : '/$raw';
+    return '$cdn$path';
+  }
+
+  static Map? _firstLatestChapter(dynamic raw) {
+    dynamic decoded = raw;
+    if (decoded is String && decoded.trim().isNotEmpty) {
+      try {
+        decoded = _decodeJson(decoded);
+      } catch (_) {
+        return null;
+      }
+    }
+    if (decoded is! List || decoded.isEmpty) return null;
+    final first = decoded.first;
+    return first is Map ? first : null;
+  }
+
+  static dynamic _decodeJson(String raw) => jsonDecode(raw);
+
+  static String _normalizedPrefix(String prefix) {
+    var value = prefix.trim();
+    if (value.isEmpty) return '/manga/';
+    if (!value.startsWith('/')) value = '/$value';
+    if (!value.endsWith('/')) value = '$value/';
+    return value;
+  }
+
+  static String _joinUrl(String base, String path) {
+    final b = base.endsWith('/') ? base.substring(0, base.length - 1) : base;
+    final p = path.startsWith('/') ? path : '/$path';
+    return '$b$p';
+  }
+
+  static double? _asDouble(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '');
+  }
+
+  static int? _asInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  static String? _stripHtml(String? raw) {
+    if (raw == null) return null;
+    return raw.replaceAll(RegExp(r'<[^>]+>'), ' ');
   }
 
   static Manga? _mangaFromDetailElement(Element el) {
