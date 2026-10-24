@@ -30,15 +30,4 @@ class AppConstants {
 
   /// Organization / package identifier prefix.
   static const String appPackage = 'com.manhwa.toon';
-
-  /// How long to wait after launch (or after the last ad) before the next
-  /// genuine tap opens the promotional URL.
-  ///
-  /// Production: `Duration(minutes: 10)`
-  /// Testing:    `Duration(seconds: 10)`
-  static const Duration adInterval = Duration(minutes: 10);
-
-  /// Promotional URL opened in the external browser.
-  static const String adUrl =
-      'https://disintegratespeck.com/c95vrpujs6?key=0fbdadf5039224e7a9cbc1d47bb6206d';
 }

@@ -42,8 +42,12 @@ class LibraryUpdatesNotifier extends AsyncNotifier<List<LibraryUpdate>> {
 
   @override
   Future<List<LibraryUpdate>> build() async {
-    final repo = ref.watch(repositoryProvider);
-    final prefs = ref.watch(sharedPreferencesProvider);
+    return const [];
+  }
+
+  Future<List<LibraryUpdate>> _scan() async {
+    final repo = ref.read(repositoryProvider);
+    final prefs = ref.read(sharedPreferencesProvider);
     final items = await repo.getLibraryItems();
     final targets = items.take(maxItems).toList();
 
@@ -68,7 +72,7 @@ class LibraryUpdatesNotifier extends AsyncNotifier<List<LibraryUpdate>> {
   /// Forces a fresh scan.
   Future<void> refresh() async {
     state = const AsyncValue.loading();
-    state = await AsyncValue.guard(build);
+    state = await AsyncValue.guard(_scan);
   }
 
   /// Marks [mangaUrl] as acknowledged up to [latestChapterUrl] (defaults to the

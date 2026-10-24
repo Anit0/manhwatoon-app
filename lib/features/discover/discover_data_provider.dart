@@ -37,7 +37,10 @@ class DiscoverData {
 
 class DiscoverDataNotifier extends AsyncNotifier<DiscoverData> {
   @override
-  Future<DiscoverData> build() => _fetch();
+  Future<DiscoverData> build() {
+    ref.watch(activeSourceIdProvider);
+    return _fetch();
+  }
 
   Future<DiscoverData> _fetch() async {
     final api = ref.read(activeSourceProvider);

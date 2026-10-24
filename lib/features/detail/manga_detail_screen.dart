@@ -34,8 +34,12 @@ class MangaDetailScreen extends ConsumerStatefulWidget {
 class _MangaDetailScreenState extends ConsumerState<MangaDetailScreen> {
   Manga? _fullManga;
   List<Chapter> _chapters = const [];
+  bool _newestFirst = true;
 
   bool _summaryExpanded = false;
+
+  List<Chapter> get _visibleChapters =>
+      _newestFirst ? _chapters : _chapters.reversed.toList();
 
   @override
   void initState() {
@@ -381,11 +385,11 @@ class _MangaDetailScreenState extends ConsumerState<MangaDetailScreen> {
                   ),
                 )
               : SliverList.builder(
-                  itemCount: _chapters.length,
+                  itemCount: _visibleChapters.length,
                   itemBuilder: (context, index) => _ChapterTile(
                     manga: manga,
-                    chapter: _chapters[index],
-                    chapters: _chapters,
+                    chapter: _visibleChapters[index],
+                    chapters: _visibleChapters,
                   ),
                 ),
           const SliverToBoxAdapter(child: SizedBox(height: 80)),
@@ -486,10 +490,25 @@ class _MangaDetailScreenState extends ConsumerState<MangaDetailScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const ListTile(
-              leading: Icon(Icons.import_contacts_rounded),
-              title: Text('Sort'),
-              subtitle: Text('Newest first'),
+            RadioListTile<bool>(
+              value: true,
+              groupValue: _newestFirst,
+              secondary: const Icon(Icons.arrow_downward_rounded),
+              title: const Text('Newest first'),
+              onChanged: (_) {
+                Navigator.pop(ctx);
+                setState(() => _newestFirst = true);
+              },
+            ),
+            RadioListTile<bool>(
+              value: false,
+              groupValue: _newestFirst,
+              secondary: const Icon(Icons.arrow_upward_rounded),
+              title: const Text('Oldest first'),
+              onChanged: (_) {
+                Navigator.pop(ctx);
+                setState(() => _newestFirst = false);
+              },
             ),
             ListTile(
               leading: const Icon(Icons.download_done_rounded),

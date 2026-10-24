@@ -38,9 +38,8 @@ class SettingsScreen extends ConsumerWidget {
               value: source.id,
               groupValue: ref.watch(activeSourceIdProvider),
               onChanged: (v) {
-                if (v != null) {
-                  ref.read(activeSourceIdProvider.notifier).select(v);
-                }
+                if (v == null) return;
+                ref.read(activeSourceIdProvider.notifier).select(v);
               },
               title: Text(source.name),
               secondary: Icon(

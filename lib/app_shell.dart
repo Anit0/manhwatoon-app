@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/network/scraper_health.dart';
@@ -30,15 +33,17 @@ class _AppShellState extends ConsumerState<AppShell> {
     // Opportunistically diff library items for new chapters shortly after
     // launch, so the Library "Updates" tab is ready when the user opens it.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(libraryUpdatesProvider.notifier).refresh();
+      Future<void>.delayed(const Duration(seconds: 2), () {
+        if (!mounted) return;
+        unawaited(ref.read(libraryUpdatesProvider.notifier).refresh());
+      });
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    final hideAdult = ref.watch(settingsProvider.select((s) => s.hideAdult));
     final adultVerified = ref.watch(settingsProvider.select((s) => s.adultVerified));
-    if (hideAdult && !adultVerified) {
+    if (!adultVerified) {
       return const _AdultGate();
     }
 
@@ -256,14 +261,17 @@ class _AdultGate extends ConsumerWidget {
                 ),
                 const SizedBox(height: 28),
                 FilledButton.icon(
-                  onPressed: () =>
+                  onPressed: () {
+                    unawaited(
                       ref.read(settingsProvider.notifier).setAdultVerified(true),
+                    );
+                  },
                   icon: const Icon(Icons.check_circle_rounded),
                   label: const Text('I am 18 years or older'),
                 ),
                 const SizedBox(height: 8),
                 TextButton(
-                  onPressed: () {},
+                  onPressed: () => SystemNavigator.pop(),
                   child: const Text('Leave'),
                 ),
               ],

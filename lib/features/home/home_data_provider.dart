@@ -37,6 +37,7 @@ class HomeData {
 class HomeDataNotifier extends AsyncNotifier<HomeData> {
   @override
   Future<HomeData> build() async {
+    ref.watch(activeSourceIdProvider);
     return _fetch();
   }
 

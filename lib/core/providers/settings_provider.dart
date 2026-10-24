@@ -235,10 +235,14 @@ class SettingsNotifier extends Notifier<AppSettings> {
   }
 
   Future<void> update(AppSettings Function(AppSettings) transform) async {
-    final prefs = await _shared();
     final next = transform(state);
-    await next.save(prefs);
     state = next;
+    try {
+      final prefs = await _shared().timeout(const Duration(seconds: 4));
+      await next.save(prefs).timeout(const Duration(seconds: 4));
+    } catch (e, st) {
+      debugPrint('Settings save failed: $e\n$st');
+    }
   }
 
   Future<void> setThemeMode(AppThemeMode mode) =>

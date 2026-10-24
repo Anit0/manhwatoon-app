@@ -22,10 +22,16 @@ class ActiveSourceIdNotifier extends Notifier<String> {
   }
 
   Future<void> select(String id) async {
-    final prefs = ref.read(sharedPreferencesProvider) ??
-        await SharedPreferences.getInstance();
+    if (state == id) return;
     state = id;
-    await prefs.setString(StorageKeys.activeSourceId, id);
+    try {
+      final prefs = ref.read(sharedPreferencesProvider) ??
+          await SharedPreferences.getInstance()
+              .timeout(const Duration(seconds: 4));
+      await prefs
+          .setString(StorageKeys.activeSourceId, id)
+          .timeout(const Duration(seconds: 4));
+    } catch (_) {}
   }
 }
 

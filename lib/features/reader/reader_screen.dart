@@ -363,9 +363,11 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
               listenable: _controller,
               builder: (context, _) => _buildBrightnessScrim(),
             ),
-            AnimatedBuilder(
-              animation: Listenable.merge([_controller, _overlayVisible]),
-              builder: (context, _) => _buildOverlays(),
+            Positioned.fill(
+              child: AnimatedBuilder(
+                animation: Listenable.merge([_controller, _overlayVisible]),
+                builder: (context, _) => _buildOverlays(),
+              ),
             ),
           ],
         ),
@@ -528,47 +530,22 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     final isWebtoon = _controller.webtoon;
     final total = _controller.currentChapterPageCount;
     final inChapter = _controller.currentPageInChapter + 1;
-    final showVerticalNav = ref.watch(
-          settingsProvider.select((s) => s.readerVerticalNav),
-        ) &&
-        isWebtoon;
-    return Stack(
-      children: [
-        Column(
-          children: [
-            AnimatedSlide(
-              offset: _overlayVisible.value ? Offset.zero : const Offset(0, -1),
-              duration: const Duration(milliseconds: 220),
-              child: _buildTopBar(),
-            ),
-            const Spacer(),
-            AnimatedSlide(
-              offset: _overlayVisible.value ? Offset.zero : const Offset(0, 1),
-              duration: const Duration(milliseconds: 220),
-              child: _buildBottomBar(inChapter, total, isWebtoon),
-            ),
-          ],
-        ),
-        if (showVerticalNav && _overlayVisible.value)
-          Align(
-            alignment: Alignment.centerRight,
-            child: Padding(
-              padding: const EdgeInsets.only(right: 4),
-              child: _VerticalChapterNav(
-                page: inChapter,
-                total: total,
-                onChanged: (value) {
-                  final target = (value - 1).clamp(0, total - 1);
-                  _controller.setCurrentIndex(
-                    _controller.currentIndex -
-                        _controller.currentPageInChapter +
-                        target,
-                  );
-                },
-              ),
-            ),
+    return SizedBox.expand(
+      child: Column(
+        children: [
+          AnimatedSlide(
+            offset: _overlayVisible.value ? Offset.zero : const Offset(0, -1),
+            duration: const Duration(milliseconds: 220),
+            child: _buildTopBar(),
           ),
-      ],
+          const Spacer(),
+          AnimatedSlide(
+            offset: _overlayVisible.value ? Offset.zero : const Offset(0, 1),
+            duration: const Duration(milliseconds: 220),
+            child: _buildBottomBar(inChapter, total, isWebtoon),
+          ),
+        ],
+      ),
     );
   }
 
@@ -693,16 +670,47 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                             style: const TextStyle(
                                 color: Colors.white, fontSize: 13),
                           ),
-                          const SizedBox(height: 4),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(3),
-                            child: LinearProgressIndicator(
-                              value: progress,
-                              minHeight: 4,
-                              color: Colors.white,
-                              backgroundColor: Colors.white24,
+                          const SizedBox(height: 2),
+                          if (total > 1)
+                            SliderTheme(
+                              data: SliderTheme.of(context).copyWith(
+                                trackHeight: 3,
+                                thumbShape: const RoundSliderThumbShape(
+                                  enabledThumbRadius: 7,
+                                ),
+                                overlayShape: const RoundSliderOverlayShape(
+                                  overlayRadius: 14,
+                                ),
+                                activeTrackColor: Colors.white,
+                                inactiveTrackColor: Colors.white24,
+                                thumbColor: Colors.white,
+                              ),
+                              child: Slider(
+                                value: page.clamp(1, total).toDouble(),
+                                min: 1,
+                                max: total.toDouble(),
+                                divisions: total - 1,
+                                onChanged: (v) {
+                                  final target =
+                                      (v.round() - 1).clamp(0, total - 1);
+                                  _controller.setCurrentIndex(
+                                    _controller.currentIndex -
+                                        _controller.currentPageInChapter +
+                                        target,
+                                  );
+                                },
+                              ),
+                            )
+                          else
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(3),
+                              child: LinearProgressIndicator(
+                                value: progress,
+                                minHeight: 4,
+                                color: Colors.white,
+                                backgroundColor: Colors.white24,
+                              ),
                             ),
-                          ),
                         ],
                       ),
                     ),
@@ -733,42 +741,6 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                 ],
               ),
             ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _VerticalChapterNav extends StatelessWidget {
-  const _VerticalChapterNav({
-    required this.page,
-    required this.total,
-    required this.onChanged,
-  });
-
-  final int page;
-  final int total;
-  final ValueChanged<int> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    if (total <= 1) return const SizedBox.shrink();
-    return RotatedBox(
-      quarterTurns: 1,
-      child: SizedBox(
-        width: 180,
-        child: SliderTheme(
-          data: SliderTheme.of(context).copyWith(
-            trackHeight: 3,
-            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
-          ),
-          child: Slider(
-            value: page.clamp(1, total).toDouble(),
-            min: 1,
-            max: total.toDouble(),
-            divisions: total > 1 ? total - 1 : null,
-            onChanged: (v) => onChanged(v.round()),
           ),
         ),
       ),

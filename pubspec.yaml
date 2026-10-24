@@ -2,7 +2,7 @@ name: manhwa_toon
 description: "A premium native Flutter manga reader powered by ManhwaToon."
 publish_to: 'none'
 
-version: 1.0.7+6
+version: 1.0.8+7
 
 environment:
   sdk: ^3.8.1
