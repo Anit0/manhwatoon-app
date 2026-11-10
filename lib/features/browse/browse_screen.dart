@@ -81,7 +81,8 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
         genreSlug: _genre?.slug,
       );
       final hideAdult = ref.read(settingsProvider).hideAdult;
-      final filtered = hideAdult ? results.where((m) => !m.isAdult).toList() : results;
+      final filtered =
+          hideAdult ? results.where((m) => !m.isAdult).toList() : results;
       if (!mounted) return;
       setState(() {
         _items.addAll(filtered);

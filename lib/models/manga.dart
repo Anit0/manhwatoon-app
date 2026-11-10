@@ -84,6 +84,41 @@ class Manga {
   final int? postId;
   final bool isAdult;
 
+  /// True when badges, genres, or title look like adult/NSFW content.
+  static bool looksAdult({
+    String? title,
+    Iterable<String> genres = const [],
+    String extra = '',
+  }) {
+    final hay = [
+      title ?? '',
+      ...genres,
+      extra,
+    ].join(' ').toLowerCase();
+    if (hay.contains('18+') ||
+        hay.contains('r-18') ||
+        hay.contains('r18') ||
+        hay.contains('nsfw')) {
+      return true;
+    }
+    const tags = [
+      'adult',
+      'smut',
+      'hentai',
+      'porn',
+      'xxx',
+      'erotica',
+      'explicit',
+      'ecchi',
+      'doujinshi',
+      'mature',
+    ];
+    for (final tag in tags) {
+      if (RegExp('\\b${RegExp.escape(tag)}\\b').hasMatch(hay)) return true;
+    }
+    return false;
+  }
+
   /// The URL slug used to build chapter-list / download paths.
   String get slug {
     final trimmed = url.endsWith('/') ? url.substring(0, url.length - 1) : url;

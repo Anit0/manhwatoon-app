@@ -39,6 +39,7 @@ class DiscoverDataNotifier extends AsyncNotifier<DiscoverData> {
   @override
   Future<DiscoverData> build() {
     ref.watch(activeSourceIdProvider);
+    ref.watch(settingsProvider.select((s) => s.hideAdult));
     return _fetch();
   }
 
@@ -48,7 +49,7 @@ class DiscoverDataNotifier extends AsyncNotifier<DiscoverData> {
 
     Future<List<Manga>> guarded(Future<List<Manga>> f) async {
       try {
-        final list = await f.timeout(const Duration(seconds: 12));
+        final list = await f.timeout(const Duration(seconds: 25));
         if (hideAdult) return list.where((m) => !m.isAdult).toList();
         return list;
       } catch (_) {

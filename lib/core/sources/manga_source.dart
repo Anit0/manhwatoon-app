@@ -25,6 +25,9 @@ abstract class MangaSource {
   /// `cdn.manhwatoon.me`. Used to resolve the correct source for an image URL.
   List<String> get imageHosts => const [];
 
+  /// When true, "hide adult" must not empty this source (it is an adult catalog).
+  bool get adultCatalog => false;
+
   /// Fetches the homepage "hot / popular" slider manga.
   Future<List<Manga>> fetchHomeSlider({bool useCache = true});
 

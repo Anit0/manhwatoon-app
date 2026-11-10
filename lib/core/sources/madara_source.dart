@@ -38,6 +38,7 @@ class MadaraSource implements MangaSource {
     this.liveSearchPath,
     this.coverCdn,
     this.imageHosts = const [],
+    this.adultCatalog = false,
     Dio? dio,
   }) : _dio = dio ?? _defaultDio(baseUrl);
 
@@ -74,6 +75,9 @@ class MadaraSource implements MangaSource {
   @override
   final List<String> imageHosts;
 
+  @override
+  final bool adultCatalog;
+
   String get _seriesPrefix {
     final raw = seriesPathPrefix ?? archivePath;
     var value = raw.trim();
@@ -91,6 +95,7 @@ class MadaraSource implements MangaSource {
   static Dio _defaultDio(String baseUrl) {
     final dio = Dio(BaseOptions(
       baseUrl: baseUrl,
+      responseType: ResponseType.plain,
       headers: {
         'User-Agent': AppConstants.userAgent,
         'Accept':
@@ -103,6 +108,7 @@ class MadaraSource implements MangaSource {
       connectTimeout: AppConstants.networkTimeout,
       receiveTimeout: AppConstants.networkTimeout,
       sendTimeout: AppConstants.networkTimeout,
+      validateStatus: (code) => code != null && code >= 200 && code < 400,
     ));
     return dio;
   }
@@ -120,7 +126,10 @@ class MadaraSource implements MangaSource {
     }
     try {
       final response = await _dio
-          .get<String>(url)
+          .get<String>(
+            url,
+            options: Options(responseType: ResponseType.plain),
+          )
           .timeout(AppConstants.networkTimeout);
       final body = response.data ?? '';
       _htmlCache[url] = (at: DateTime.now(), body: body);
@@ -171,7 +180,12 @@ class MadaraSource implements MangaSource {
             url,
             data: data,
             options: Options(
-              headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+              contentType: Headers.formUrlEncodedContentType,
+              responseType: ResponseType.plain,
+              headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': '*/*',
+              },
             ),
           )
           .timeout(AppConstants.networkTimeout);
@@ -189,7 +203,13 @@ class MadaraSource implements MangaSource {
   @override
   Future<List<Manga>> fetchHomeSlider({bool useCache = true}) async {
     final html = await _getHtml('/', useCache: useCache);
-    final result = MadaraParser.parseSlider(html);
+    var result = MadaraParser.parseSlider(html);
+    if (result.isEmpty) {
+      result = MadaraParser.parseMangaGrid(html);
+    }
+    if (result.isEmpty) {
+      result = await _fetchArchiveAjax(SortOrder.trending, page: 1);
+    }
     _warnIfEmpty('homeSlider', result);
     return result;
   }
@@ -197,7 +217,10 @@ class MadaraSource implements MangaSource {
   @override
   Future<List<Manga>> fetchHomeLatest({bool useCache = true}) async {
     final html = await _getHtml('/', useCache: useCache);
-    final result = MadaraParser.parseMangaGrid(html);
+    var result = MadaraParser.parseMangaGrid(html);
+    if (result.isEmpty) {
+      result = await _fetchArchiveAjax(SortOrder.latest, page: 1);
+    }
     _warnIfEmpty('homeLatest', result);
     return result;
   }
@@ -216,10 +239,72 @@ class MadaraSource implements MangaSource {
     // for subsequent pages to avoid a wasted round trip.
     final pageParam = page > 1 ? '&page=$page' : '';
     final url = '$base?m_orderby=${order.query}$pageParam';
-    final html = await _getHtml(url, useCache: useCache);
-    final result = MadaraParser.parseMangaGrid(html);
+    final ajaxFuture =
+        _fetchArchiveAjax(order, page: page, genreSlug: genreSlug);
+    List<Manga> result = const [];
+    try {
+      final html = await _getHtml(url, useCache: useCache);
+      result = MadaraParser.parseMangaGrid(html);
+    } on SiteApiException {
+      result = const [];
+    }
+    if (result.isEmpty) {
+      result = await ajaxFuture;
+    }
     _warnIfEmpty('archiveGrid', result);
     return result;
+  }
+
+  /// Child themes often ship an empty HTML shell and fill the grid via
+  /// `madara_load_more`. Page index is 0-based on that endpoint.
+  Future<List<Manga>> _fetchArchiveAjax(
+    SortOrder order, {
+    required int page,
+    String? genreSlug,
+  }) async {
+    final vars = <String, String>{
+      'paged': '$page',
+      'template': 'archive',
+      'sidebar': 'right',
+      'post_type': 'wp-manga',
+      'post_status': 'publish',
+      'order': 'desc',
+      'manga_archives_item_layout': 'default',
+    };
+    switch (order) {
+      case SortOrder.alphabet:
+        vars['orderby'] = 'title';
+        vars['order'] = 'asc';
+      case SortOrder.newManga:
+        vars['orderby'] = 'date';
+      case SortOrder.rating:
+        vars['orderby'] = 'meta_value_num';
+        vars['meta_key'] = '_manga_avarage_reviews';
+      case SortOrder.views:
+        vars['orderby'] = 'meta_value_num';
+        vars['meta_key'] = '_wp_manga_views';
+      case SortOrder.trending:
+      case SortOrder.latest:
+        vars['orderby'] = 'meta_value_num';
+        vars['meta_key'] = '_latest_update';
+    }
+    final data = <String, dynamic>{
+      'action': 'madara_load_more',
+      'page': '${page - 1}',
+      'template': 'madara-core/content/content-archive',
+    };
+    vars.forEach((key, value) => data['vars[$key]'] = value);
+    if (genreSlug != null && genreSlug.isNotEmpty) {
+      data['vars[tax_query][0][taxonomy]'] = 'wp-manga-genre';
+      data['vars[tax_query][0][field]'] = 'slug';
+      data['vars[tax_query][0][terms][]'] = genreSlug;
+    }
+    try {
+      final html = await _postForm('$baseUrl/wp-admin/admin-ajax.php', data);
+      return MadaraParser.parseMangaGrid(html);
+    } on SiteApiException {
+      return const [];
+    }
   }
 
   @override
@@ -232,23 +317,10 @@ class MadaraSource implements MangaSource {
           .map((m) => SearchSuggestion(title: m.title, url: m.url, type: 'manga'))
           .toList();
     }
-    try {
-      final body = await _postForm(
-        '$baseUrl/wp-admin/admin-ajax.php',
-        {
-          'action': 'wp-manga-search-manga',
-          'title': query.trim(),
-        },
-      );
-      final decoded = _jsonDecode(body);
-      return MadaraParser.parseSearchSuggestionApi(
-        decoded,
-        baseUrl: baseUrl,
-        seriesPathPrefix: _seriesPrefix,
-      );
-    } catch (_) {
-      return const [];
-    }
+    final ajax = await _ajaxTitleSearch(query);
+    return ajax
+        .map((m) => SearchSuggestion(title: m.title, url: m.url, type: 'manga'))
+        .toList();
   }
 
   @override
@@ -281,12 +353,35 @@ class MadaraSource implements MangaSource {
       final live = await _liveSearch(term);
       if (live != null && live.isNotEmpty) {
         result = live;
-      } else if (htmlError != null && live == null) {
-        throw htmlError;
+      } else {
+        result = await _ajaxTitleSearch(term);
+        if (result.isEmpty && htmlError != null && live == null) {
+          throw htmlError;
+        }
       }
     }
     _warnIfEmpty('searchResults', result);
     return result;
+  }
+
+  Future<List<Manga>> _ajaxTitleSearch(String query) async {
+    try {
+      final body = await _postForm(
+        '$baseUrl/wp-admin/admin-ajax.php',
+        {
+          'action': 'wp-manga-search-manga',
+          'title': query.trim(),
+        },
+      );
+      final decoded = _jsonDecode(body);
+      return MadaraParser.parseSearchApi(
+        decoded,
+        baseUrl: baseUrl,
+        seriesPathPrefix: _seriesPrefix,
+      );
+    } catch (_) {
+      return const [];
+    }
   }
 
   /// Hits the source-specific live-search API when [liveSearchPath] is set.
@@ -359,7 +454,12 @@ class MadaraSource implements MangaSource {
     final html = await _getHtml(
       '$baseUrl${archivePath.startsWith('/') ? archivePath : '/$archivePath'}',
     );
-    return MadaraParser.parseGenres(html, genrePath: genrePathPrefix);
+    var genres = MadaraParser.parseGenres(html, genrePath: genrePathPrefix);
+    if (genres.isEmpty) {
+      final home = await _getHtml('/');
+      genres = MadaraParser.parseGenres(home, genrePath: genrePathPrefix);
+    }
+    return genres;
   }
 
   @override
@@ -390,7 +490,11 @@ class MadaraSource implements MangaSource {
     );
   }
 
-  dynamic _jsonDecode(String body) => jsonDecode(body);
+  dynamic _jsonDecode(String body) {
+    final trimmed = body.trim();
+    if (trimmed.isEmpty || trimmed == '0') return null;
+    return jsonDecode(trimmed);
+  }
 
   /// Flags a parser that came back empty after a successful HTTP call, so
   /// upstream markup changes surface early instead of as silent empty screens.

@@ -20,15 +20,27 @@ class MadaraParser {
     final doc = html_parser.parse(html);
     final items = doc.querySelectorAll('.page-item-detail');
     final result = <Manga>[];
-    for (final el in items) {
-      final manga = _mangaFromDetailElement(el);
-      if (manga != null) result.add(manga);
+    final seen = <String>{};
+    void add(Manga? manga) {
+      if (manga == null || manga.url.isEmpty || !seen.add(manga.url)) return;
+      result.add(manga);
     }
-    // Fallback: home "hot slider" items use a different container.
+
+    for (final el in items) {
+      add(_mangaFromDetailElement(el));
+    }
+    for (final el in doc.querySelectorAll('.ember-card')) {
+      add(_mangaFromThemeCard(el));
+    }
+    for (final el in doc.querySelectorAll('.panelia-card')) {
+      add(_mangaFromThemeCard(el));
+    }
+    for (final el in doc.querySelectorAll('.aqua-archive-card, .aqua-manga-card')) {
+      add(_mangaFromAquaCard(el));
+    }
     if (result.isEmpty) {
       for (final el in doc.querySelectorAll('.slider__item')) {
-        final manga = _mangaFromSliderElement(el);
-        if (manga != null) result.add(manga);
+        add(_mangaFromSliderElement(el));
       }
     }
     return result;
@@ -42,6 +54,12 @@ class MadaraParser {
       final manga = _mangaFromSliderElement(el);
       if (manga != null) result.add(manga);
     }
+    if (result.isEmpty) {
+      for (final el in doc.querySelectorAll('.aqua-manga-card')) {
+        final manga = _mangaFromAquaCard(el);
+        if (manga != null) result.add(manga);
+      }
+    }
     return result;
   }
 
@@ -54,10 +72,7 @@ class MadaraParser {
       if (manga != null) result.add(manga);
     }
     if (result.isEmpty) {
-      for (final el in doc.querySelectorAll('.page-item-detail')) {
-        final manga = _mangaFromDetailElement(el);
-        if (manga != null) result.add(manga);
-      }
+      result.addAll(parseMangaGrid(html));
     }
     return result;
   }
@@ -163,6 +178,11 @@ class MadaraParser {
       summary: summary,
       views: views,
       postId: postId,
+      isAdult: Manga.looksAdult(
+        title: title,
+        genres: genres,
+        extra: summary ?? '',
+      ),
     );
   }
 
@@ -227,6 +247,52 @@ class MadaraParser {
   static String? _stripHtml(String? raw) {
     if (raw == null) return null;
     return raw.replaceAll(RegExp(r'<[^>]+>'), ' ');
+  }
+
+  static Manga? _mangaFromAquaCard(Element el) {
+    final titleLink = el.querySelector(
+      '.aqua-archive-card__title a, .aqua-manga-card__title a, h3 a',
+    );
+    final coverLink = el.querySelector(
+      '.aqua-archive-card__cover-link, .aqua-manga-card__cover-link, .aqua-manga-card__thumb-link',
+    );
+    final url = titleLink?.attributes['href'] ?? coverLink?.attributes['href'];
+    if (url == null || url.isEmpty) return null;
+    final title = _cleanText(titleLink?.text) ??
+        coverLink?.attributes['aria-label'] ??
+        '';
+    final img = el.querySelector('img');
+    final chapterLink = el.querySelector('.aqua-manga-card__chapters a, .chapter a');
+    return Manga(
+      url: url,
+      title: title,
+      coverUrl: _imageUrl(img),
+      latestChapterTitle: _cleanText(chapterLink?.text),
+      latestChapterUrl: chapterLink?.attributes['href'],
+      isAdult: _isAdult(el),
+    );
+  }
+
+  static Manga? _mangaFromThemeCard(Element el) {
+    final titleLink = el.querySelector('h3 a');
+    final coverLink =
+        el.querySelector('a.ember-card-cover, a.panelia-card-cover');
+    final url = titleLink?.attributes['href'] ??
+        coverLink?.attributes['href'];
+    if (url == null || url.isEmpty) return null;
+    final title = _cleanText(titleLink?.text) ??
+        coverLink?.attributes['aria-label'] ??
+        '';
+    final img = coverLink?.querySelector('img') ?? el.querySelector('img');
+    final chapterLink = el.querySelector('.chapter-item .chapter a, .chapter a');
+    return Manga(
+      url: url,
+      title: title,
+      coverUrl: _imageUrl(img),
+      latestChapterTitle: _cleanText(chapterLink?.text),
+      latestChapterUrl: chapterLink?.attributes['href'],
+      isAdult: _isAdult(el),
+    );
   }
 
   static Manga? _mangaFromDetailElement(Element el) {
@@ -337,7 +403,7 @@ class MadaraParser {
     if (profile != null) {
       final titleEl = profile.querySelector('.post-title h1');
       title = _cleanText(titleEl?.text);
-      isAdult = profile.querySelector('.post-title .manga-title-badges')?.text.contains('18+') == true;
+      isAdult = _isAdult(profile);
       cover = _imageUrl(profile.querySelector('.summary_image img'));
     }
 
@@ -385,7 +451,12 @@ class MadaraParser {
       summary: summary,
       views: views,
       postId: postId,
-      isAdult: isAdult,
+      isAdult: isAdult ||
+          Manga.looksAdult(
+            title: title,
+            genres: genres,
+            extra: type ?? '',
+          ),
     );
   }
 
@@ -570,8 +641,22 @@ class MadaraParser {
   }
 
   static bool _isAdult(Element el) {
-    return el.text.contains('18+') ||
-        (el.querySelector('.manga-title-badges')?.text ?? '').contains('18+');
+    final cls = '${el.className} ${el.attributes['class'] ?? ''}'.toLowerCase();
+    if (cls.contains('adult') || cls.contains('nsfw') || cls.contains('smut')) {
+      return true;
+    }
+    final badgeText = el
+        .querySelectorAll(
+          '.manga-title-badges, .adult, .genres a, .genre a, .manga-title-badges.adult',
+        )
+        .map((e) => e.text)
+        .join(' ');
+    final extra = [
+      badgeText,
+      el.querySelector('.post-title')?.text ?? '',
+      if (el.innerHtml.contains('18+')) '18+',
+    ].join(' ');
+    return Manga.looksAdult(extra: extra);
   }
 
   static String? _cleanText(String? raw) {

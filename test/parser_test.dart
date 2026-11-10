@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:manhwa_toon/core/network/madara_parser.dart';
+import 'package:manhwa_toon/models/manga.dart';
 
 void main() {
   String fixture(String name) => File('test/fixtures/$name').readAsStringSync();
@@ -281,6 +282,13 @@ void main() {
     expect(genres.map((g) => g.slug), contains('romance'));
   });
 
+  test('looksAdult matches badges, genres and 18+', () {
+    expect(Manga.looksAdult(extra: '18+'), isTrue);
+    expect(Manga.looksAdult(genres: ['Smut', 'Romance']), isTrue);
+    expect(Manga.looksAdult(title: 'Some Hentai Title'), isTrue);
+    expect(Manga.looksAdult(title: 'Solo Leveling', genres: ['Action']), isFalse);
+  });
+
   test('parses relative time', () {
     final dt = MadaraParser.parseRelativeTime('2 days ago');
     expect(dt, isNotNull);
@@ -288,5 +296,49 @@ void main() {
     final min = MadaraParser.parseRelativeTime('13 minutes ago');
     expect(DateTime.now().difference(min!).inMinutes, 13);
     expect(MadaraParser.parseRelativeTime('gibberish'), isNull);
+  });
+
+  test('parses ember-card and panelia-card grids', () {
+    const html = '''
+    <article class="ember-card">
+      <a class="ember-card-cover" href="https://www.manhwatoons.com/webtoon/solo/">
+        <img src="https://cdn.manhwatoons.com/solo.jpg" />
+      </a>
+      <h3><a href="https://www.manhwatoons.com/webtoon/solo/">Solo Leveling</a></h3>
+      <div class="chapter-item"><span class="chapter"><a href="https://www.manhwatoons.com/webtoon/solo/chapter-1/">Chapter 1</a></span></div>
+    </article>
+    <article class="panelia-card">
+      <div class="panelia-card-flags"><span class="manga-title-badges custom adult">18+</span></div>
+      <a class="panelia-card-cover" href="https://www.doujinhq.club/dj/sample/">
+        <img src="https://cdn.doujinhq.club/cover.jpg" />
+      </a>
+      <h3><a href="https://www.doujinhq.club/dj/sample/">Sample Doujin</a></h3>
+    </article>
+    ''';
+    final manga = MadaraParser.parseMangaGrid(html);
+    expect(manga.length, 2);
+    expect(manga.first.title, 'Solo Leveling');
+    expect(manga.first.url, contains('/webtoon/solo/'));
+    expect(manga.first.coverUrl, startsWith('https://cdn.manhwatoons.com'));
+    expect(manga.last.title, 'Sample Doujin');
+    expect(manga.last.isAdult, isTrue);
+  });
+
+  test('parses aqua-archive-card grids', () {
+    const html = '''
+    <article class="aqua-archive-card">
+      <a href="https://aquareader.org/manga/black-haze-2025/" class="aqua-archive-card__cover-link">
+        <img src="https://aquareader.org/wp-content/uploads/cover.jpg" class="aqua-archive-card__cover" />
+      </a>
+      <h3 class="aqua-archive-card__title">
+        <a href="https://aquareader.org/manga/black-haze-2025/">Black Haze (2025)</a>
+      </h3>
+    </article>
+    ''';
+    final manga = MadaraParser.parseMangaGrid(html);
+    expect(manga.length, 1);
+    expect(manga.first.title, 'Black Haze (2025)');
+    expect(manga.first.url, contains('/manga/black-haze-2025/'));
+    expect(manga.first.coverUrl, startsWith('https://aquareader.org/'));
   });
 }
